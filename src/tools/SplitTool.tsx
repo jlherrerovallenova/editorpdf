@@ -25,7 +25,6 @@ interface SplitToolProps {
 
 export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
   const [file, setFile] = useState<File | null>(null);
-  const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [isLoadingPages, setIsLoadingPages] = useState(false);
   const [splitMode, setSplitMode] = useState<'extract' | 'ranges' | 'all'>('extract');
@@ -34,6 +33,8 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [generatedResults, setGeneratedResults] = useState<{ name: string; data: Uint8Array }[] | null>(null);
+
+  const selectedSet = React.useMemo(() => new Set(selectedPages), [selectedPages]);
 
   const handleFileSelected = async (files: File[]) => {
     if (files.length === 0) return;
@@ -44,7 +45,6 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
 
     try {
       const buffer = await f.arrayBuffer();
-      setArrayBuffer(buffer);
       const extracted = await extractAllThumbnails(buffer);
       setPages(extracted);
       // Select first page by default
@@ -79,7 +79,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
   };
 
   const handleSplit = async () => {
-    if (!arrayBuffer || !file) return;
+    if (!file) return;
 
     if (splitMode === 'extract' && selectedPages.length === 0) {
       setErrorMsg('Por favor selecciona al menos una página para extraer.');
@@ -128,7 +128,6 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
 
   const handleReset = () => {
     setFile(null);
-    setArrayBuffer(null);
     setPages([]);
     setGeneratedResults(null);
     setSelectedPages([]);
@@ -255,6 +254,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
                   </label>
                   <input
                     type="text"
+                    aria-label="Rangos de páginas a dividir"
                     value={rangeString}
                     onChange={(e) => setRangeString(e.target.value)}
                     placeholder="ej: 1-3, 4-5"
@@ -294,12 +294,12 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
           {/* Visual Thumbnails Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {pages.map((p) => {
-              const isSelected = selectedPages.includes(p.pageNumber);
+              const isSelected = selectedSet.has(p.pageNumber);
               return (
                 <div
                   key={p.pageNumber}
                   onClick={() => splitMode === 'extract' && togglePageSelection(p.pageNumber)}
-                  className={`group relative bg-white rounded-2xl p-2 border-2 transition-all ${
+                  className={`group relative bg-white rounded-2xl p-2 border-2 transition-[border-color,box-shadow] ${
                     splitMode === 'extract' ? 'cursor-pointer' : ''
                   } ${
                     splitMode === 'extract' && isSelected
@@ -363,7 +363,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
               <button
                 onClick={handleSplit}
                 disabled={isProcessing}
-                className="inline-flex items-center gap-2 px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-base rounded-xl shadow-lg shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+                className="inline-flex items-center gap-2 px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-base rounded-xl shadow-lg shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
               >
                 {isProcessing ? (
                   <>

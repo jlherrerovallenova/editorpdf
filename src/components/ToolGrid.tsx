@@ -71,10 +71,11 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
           </div>
           <input
             type="text"
+            aria-label="Buscar herramienta"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar herramienta (ej: unir, comprimir, firmar...)"
-            className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-medium shadow-xs focus:ring-2 focus:ring-brand-500 focus:outline-hidden transition-all"
+            className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-medium shadow-xs focus:ring-2 focus:ring-brand-500 focus:outline-hidden transition-colors"
           />
         </div>
 
@@ -91,7 +92,7 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id as any)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                 selectedCategory === cat.id
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
@@ -108,10 +109,11 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
         {filteredTools.map((tool) => {
           const IconComponent = iconMap[tool.icon] || Combine;
           return (
-            <div
+            <button
+              type="button"
               key={tool.id}
               onClick={() => onSelectTool(tool.id)}
-              className="group bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 hover:border-brand-500/50 shadow-xs hover:shadow-xl hover:shadow-brand-500/5 transition-all duration-200 cursor-pointer flex flex-col justify-between transform hover:-translate-y-1 relative overflow-hidden"
+              className="text-left w-full group bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 hover:border-brand-500/50 shadow-xs hover:shadow-xl hover:shadow-brand-500/5 transition-[border-color,box-shadow,transform] duration-200 cursor-pointer flex flex-col justify-between transform hover:-translate-y-1 relative overflow-hidden"
             >
               {/* Subtle top accent gradient */}
               <div
@@ -154,7 +156,7 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
                 <span>Abrir herramienta</span>
                 <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

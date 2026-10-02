@@ -26,33 +26,36 @@ export const MergeTool: React.FC<MergeToolProps> = ({ onHome }) => {
 
   const handleFilesSelected = async (selectedFiles: File[]) => {
     setErrorMsg(null);
-    const newItems: UploadedFile[] = [];
 
-    for (const f of selectedFiles) {
-      try {
-        const buffer = await f.arrayBuffer();
-        let pageCount = 1;
+    const items = await Promise.all(
+      selectedFiles.map(async (f) => {
         try {
-          const doc = await getPdfJsDocument(buffer);
-          pageCount = doc.numPages;
-        } catch (e) {
-          // ignore page count reading failure
+          const buffer = await f.arrayBuffer();
+          let pageCount = 1;
+          try {
+            const doc = await getPdfJsDocument(buffer);
+            pageCount = doc.numPages;
+          } catch (e) {
+            // ignore page count reading failure
+          }
+
+          return {
+            id: Math.random().toString(36).substring(2, 9),
+            file: f,
+            name: f.name,
+            size: f.size,
+            arrayBuffer: buffer,
+            pageCount,
+          } as UploadedFile;
+        } catch (err) {
+          console.error('Error reading file:', err);
+          return null;
         }
+      })
+    );
 
-        newItems.push({
-          id: Math.random().toString(36).substring(2, 9),
-          file: f,
-          name: f.name,
-          size: f.size,
-          arrayBuffer: buffer,
-          pageCount,
-        });
-      } catch (err) {
-        console.error('Error reading file:', err);
-      }
-    }
-
-    setFiles((prev) => [...prev, ...newItems]);
+    const validItems = items.filter((item): item is UploadedFile => item !== null);
+    setFiles((prev) => [...prev, ...validItems]);
   };
 
   const handleRemove = (id: string) => {
@@ -194,7 +197,7 @@ export const MergeTool: React.FC<MergeToolProps> = ({ onHome }) => {
             {files.map((item, index) => (
               <div
                 key={item.id}
-                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs hover:border-brand-300 transition-all flex flex-col justify-between group"
+                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs hover:border-brand-300 transition-[border-color,box-shadow] flex flex-col justify-between group"
               >
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-12 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center text-brand-600 shrink-0 font-bold text-xs">
@@ -259,7 +262,7 @@ export const MergeTool: React.FC<MergeToolProps> = ({ onHome }) => {
             <button
               onClick={handleMerge}
               disabled={isProcessing || files.length < 2}
-              className="inline-flex items-center gap-3 px-10 py-5 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 disabled:bg-slate-300 text-white font-extrabold text-xl rounded-2xl shadow-xl shadow-brand-600/30 hover:shadow-brand-600/40 transition-all transform hover:-translate-y-0.5 cursor-pointer disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-3 px-10 py-5 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 disabled:bg-slate-300 text-white font-extrabold text-xl rounded-2xl shadow-xl shadow-brand-600/30 hover:shadow-brand-600/40 transition-[background-color,box-shadow,transform] transform hover:-translate-y-0.5 cursor-pointer disabled:cursor-not-allowed"
             >
               {isProcessing ? (
                 <>

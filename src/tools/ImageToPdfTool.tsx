@@ -168,7 +168,7 @@ export const ImageToPdfTool: React.FC<ImageToPdfToolProps> = ({ onHome }) => {
                     key={opt.id}
                     type="button"
                     onClick={() => setOrientation(opt.id as any)}
-                    className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                    className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${
                       orientation === opt.id
                         ? 'border-pink-500 bg-pink-50 text-pink-700'
                         : 'border-slate-200 text-slate-600 hover:border-slate-300'
@@ -188,7 +188,7 @@ export const ImageToPdfTool: React.FC<ImageToPdfToolProps> = ({ onHome }) => {
                 <button
                   type="button"
                   onClick={() => setPageSize('a4')}
-                  className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                  className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${
                     pageSize === 'a4'
                       ? 'border-pink-500 bg-pink-50 text-pink-700'
                       : 'border-slate-200 text-slate-600 hover:border-slate-300'
@@ -199,7 +199,7 @@ export const ImageToPdfTool: React.FC<ImageToPdfToolProps> = ({ onHome }) => {
                 <button
                   type="button"
                   onClick={() => setPageSize('fit')}
-                  className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                  className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${
                     pageSize === 'fit'
                       ? 'border-pink-500 bg-pink-50 text-pink-700'
                       : 'border-slate-200 text-slate-600 hover:border-slate-300'
@@ -224,7 +224,7 @@ export const ImageToPdfTool: React.FC<ImageToPdfToolProps> = ({ onHome }) => {
                     key={m.val}
                     type="button"
                     onClick={() => setMargin(m.val)}
-                    className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                    className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${
                       margin === m.val
                         ? 'border-pink-500 bg-pink-50 text-pink-700'
                         : 'border-slate-200 text-slate-600 hover:border-slate-300'
@@ -318,7 +318,7 @@ export const ImageToPdfTool: React.FC<ImageToPdfToolProps> = ({ onHome }) => {
             <button
               onClick={handleConvert}
               disabled={isProcessing || images.length === 0}
-              className="inline-flex items-center gap-3 px-10 py-5 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xl rounded-2xl shadow-xl shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+              className="inline-flex items-center gap-3 px-10 py-5 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xl rounded-2xl shadow-xl shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
             >
               {isProcessing ? (
                 <>

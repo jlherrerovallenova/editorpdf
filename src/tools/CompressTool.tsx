@@ -18,7 +18,6 @@ interface CompressToolProps {
 
 export const CompressTool: React.FC<CompressToolProps> = ({ onHome }) => {
   const [file, setFile] = useState<File | null>(null);
-  const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [compressionLevel, setCompressionLevel] = useState<'extreme' | 'recommended' | 'low'>('recommended');
   const [isCompressing, setIsCompressing] = useState(false);
   const [progressText, setProgressText] = useState<string>('');
@@ -30,21 +29,14 @@ export const CompressTool: React.FC<CompressToolProps> = ({ onHome }) => {
     savedPercentage: number;
   } | null>(null);
 
-  const handleFileSelected = async (files: File[]) => {
+  const handleFileSelected = (files: File[]) => {
     if (files.length === 0) return;
-    const f = files[0];
-    setFile(f);
+    setFile(files[0]);
     setErrorMsg(null);
-    try {
-      const buffer = await f.arrayBuffer();
-      setArrayBuffer(buffer);
-    } catch (e) {
-      setErrorMsg('No se pudo leer el archivo seleccionado.');
-    }
   };
 
   const handleCompress = async () => {
-    if (!arrayBuffer || !file) return;
+    if (!file) return;
 
     setIsCompressing(true);
     setErrorMsg(null);
@@ -76,7 +68,6 @@ export const CompressTool: React.FC<CompressToolProps> = ({ onHome }) => {
 
   const handleReset = () => {
     setFile(null);
-    setArrayBuffer(null);
     setResult(null);
     setErrorMsg(null);
   };
@@ -155,7 +146,7 @@ export const CompressTool: React.FC<CompressToolProps> = ({ onHome }) => {
               {/* Extreme */}
               <div
                 onClick={() => setCompressionLevel('extreme')}
-                className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                className={`p-5 rounded-2xl border-2 transition-[border-color,background-color,box-shadow] cursor-pointer flex flex-col justify-between ${
                   compressionLevel === 'extreme'
                     ? 'border-emerald-600 bg-emerald-50/50 shadow-sm'
                     : 'border-slate-200 hover:border-slate-300'
@@ -177,7 +168,7 @@ export const CompressTool: React.FC<CompressToolProps> = ({ onHome }) => {
               {/* Recommended */}
               <div
                 onClick={() => setCompressionLevel('recommended')}
-                className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between relative ${
+                className={`p-5 rounded-2xl border-2 transition-[border-color,background-color,box-shadow] cursor-pointer flex flex-col justify-between relative ${
                   compressionLevel === 'recommended'
                     ? 'border-emerald-600 bg-emerald-50/50 shadow-sm'
                     : 'border-slate-200 hover:border-slate-300'
@@ -199,7 +190,7 @@ export const CompressTool: React.FC<CompressToolProps> = ({ onHome }) => {
               {/* Low */}
               <div
                 onClick={() => setCompressionLevel('low')}
-                className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                className={`p-5 rounded-2xl border-2 transition-[border-color,background-color,box-shadow] cursor-pointer flex flex-col justify-between ${
                   compressionLevel === 'low'
                     ? 'border-emerald-600 bg-emerald-50/50 shadow-sm'
                     : 'border-slate-200 hover:border-slate-300'
@@ -236,7 +227,7 @@ export const CompressTool: React.FC<CompressToolProps> = ({ onHome }) => {
             <button
               onClick={handleCompress}
               disabled={isCompressing}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-10 py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-lg rounded-2xl shadow-xl shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-10 py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-lg rounded-2xl shadow-xl shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
             >
               {isCompressing ? (
                 <>

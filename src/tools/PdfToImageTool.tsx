@@ -17,7 +17,6 @@ interface PdfToImageToolProps {
 
 export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
   const [file, setFile] = useState<File | null>(null);
-  const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [format, setFormat] = useState<'image/jpeg' | 'image/png'>('image/jpeg');
   const [qualityScale, setQualityScale] = useState<number>(2.0); // 1.5 standard, 2.5 high
   const [isProcessing, setIsProcessing] = useState(false);
@@ -25,21 +24,14 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [images, setImages] = useState<{ name: string; blob: Blob; dataUrl: string }[] | null>(null);
 
-  const handleFileSelected = async (files: File[]) => {
+  const handleFileSelected = (files: File[]) => {
     if (files.length === 0) return;
-    const f = files[0];
-    setFile(f);
+    setFile(files[0]);
     setErrorMsg(null);
-    try {
-      const buffer = await f.arrayBuffer();
-      setArrayBuffer(buffer);
-    } catch (e) {
-      setErrorMsg('No se pudo leer el archivo.');
-    }
   };
 
   const handleConvert = async () => {
-    if (!arrayBuffer || !file) return;
+    if (!file) return;
 
     setIsProcessing(true);
     setErrorMsg(null);
@@ -76,7 +68,6 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
 
   const handleReset = () => {
     setFile(null);
-    setArrayBuffer(null);
     setImages(null);
     setErrorMsg(null);
   };
@@ -99,9 +90,9 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
             Vistas previas individuales:
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
-            {images.map((img, idx) => (
+            {images.map((img) => (
               <div
-                key={idx}
+                key={img.name}
                 className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between group"
               >
                 <div className="relative aspect-3/4 rounded-xl overflow-hidden bg-white border border-slate-100 flex items-center justify-center p-1">
@@ -245,7 +236,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
             <button
               onClick={handleConvert}
               disabled={isProcessing}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-5 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xl rounded-2xl shadow-xl shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-5 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xl rounded-2xl shadow-xl shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
             >
               {isProcessing ? (
                 <>

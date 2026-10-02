@@ -181,6 +181,7 @@ export const WatermarkTool: React.FC<WatermarkToolProps> = ({ onHome }) => {
               </label>
               <input
                 type="text"
+                aria-label="Texto de la marca de agua"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="ej: CONFIDENCIAL"
@@ -218,7 +219,7 @@ export const WatermarkTool: React.FC<WatermarkToolProps> = ({ onHome }) => {
                       if (pos.id === 'center') setRotation(0);
                       if (pos.id === 'diagonal') setRotation(45);
                     }}
-                    className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                    className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${
                       position === pos.id
                         ? 'border-purple-600 bg-purple-50 text-purple-700'
                         : 'border-slate-200 text-slate-600 hover:border-slate-300'
@@ -295,7 +296,7 @@ export const WatermarkTool: React.FC<WatermarkToolProps> = ({ onHome }) => {
             <button
               onClick={handleApply}
               disabled={isProcessing}
-              className="w-full inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-lg rounded-2xl shadow-xl shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+              className="w-full inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-lg rounded-2xl shadow-xl shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
             >
               {isProcessing ? (
                 <>

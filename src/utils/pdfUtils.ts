@@ -236,8 +236,10 @@ export async function organizePdf(
   pdfData: ArrayBuffer,
   pageList: { originalIndex: number; rotation: number; isDeleted?: boolean }[]
 ): Promise<Uint8Array> {
-  const originalPdf = await PDFDocument.load(pdfData, { ignoreEncryption: true });
-  const newPdf = await PDFDocument.create();
+  const [originalPdf, newPdf] = await Promise.all([
+    PDFDocument.load(pdfData, { ignoreEncryption: true }),
+    PDFDocument.create(),
+  ]);
 
   const activePages = pageList.filter((p) => !p.isDeleted);
   if (activePages.length === 0) {
@@ -541,8 +543,10 @@ export async function applyAnnotationsToPdf(
   annotations: Annotation[]
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.load(pdfData, { ignoreEncryption: true });
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const [fontRegular, fontBold] = await Promise.all([
+    pdfDoc.embedFont(StandardFonts.Helvetica),
+    pdfDoc.embedFont(StandardFonts.HelveticaBold),
+  ]);
   const pages = pdfDoc.getPages();
 
   for (const ann of annotations) {

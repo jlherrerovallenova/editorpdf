@@ -30,7 +30,6 @@ interface OrganizeToolProps {
 
 export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
   const [file, setFile] = useState<File | null>(null);
-  const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [pages, setPages] = useState<PageItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -46,7 +45,6 @@ export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
 
     try {
       const buffer = await f.arrayBuffer();
-      setArrayBuffer(buffer);
       const thumbs = await extractAllThumbnails(buffer);
       const items: PageItem[] = thumbs.map((t, idx) => ({
         id: `page-${idx}`,
@@ -114,7 +112,7 @@ export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
   };
 
   const handleSave = async () => {
-    if (!arrayBuffer || !file) return;
+    if (!file) return;
 
     const remainingPages = pages.filter((p) => !p.isDeleted);
     if (remainingPages.length === 0) {
@@ -152,7 +150,6 @@ export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
 
   const handleReset = () => {
     setFile(null);
-    setArrayBuffer(null);
     setPages([]);
     setResultData(null);
     setErrorMsg(null);
@@ -344,7 +341,7 @@ export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
               <button
                 onClick={handleSave}
                 disabled={isProcessing || activeCount === 0}
-                className="inline-flex items-center gap-2 px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-base rounded-xl shadow-lg shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+                className="inline-flex items-center gap-2 px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-base rounded-xl shadow-lg shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
               >
                 {isProcessing ? (
                   <>

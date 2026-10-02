@@ -19,7 +19,6 @@ interface ProtectToolProps {
 
 export const ProtectTool: React.FC<ProtectToolProps> = ({ onHome }) => {
   const [file, setFile] = useState<File | null>(null);
-  const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -27,21 +26,14 @@ export const ProtectTool: React.FC<ProtectToolProps> = ({ onHome }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [resultData, setResultData] = useState<Uint8Array | null>(null);
 
-  const handleFileSelected = async (files: File[]) => {
+  const handleFileSelected = (files: File[]) => {
     if (files.length === 0) return;
-    const f = files[0];
-    setFile(f);
+    setFile(files[0]);
     setErrorMsg(null);
-    try {
-      const buffer = await f.arrayBuffer();
-      setArrayBuffer(buffer);
-    } catch (e) {
-      setErrorMsg('No se pudo abrir el archivo PDF.');
-    }
   };
 
   const handleProtect = async () => {
-    if (!arrayBuffer || !file) return;
+    if (!file) return;
 
     if (!password) {
       setErrorMsg('Por favor escribe una contraseña para proteger el PDF.');
@@ -81,7 +73,6 @@ export const ProtectTool: React.FC<ProtectToolProps> = ({ onHome }) => {
 
   const handleReset = () => {
     setFile(null);
-    setArrayBuffer(null);
     setPassword('');
     setConfirmPassword('');
     setResultData(null);
@@ -200,7 +191,7 @@ export const ProtectTool: React.FC<ProtectToolProps> = ({ onHome }) => {
           <button
             onClick={handleProtect}
             disabled={isProcessing}
-            className="w-full inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-lg rounded-2xl shadow-xl shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+            className="w-full inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-lg rounded-2xl shadow-xl shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
           >
             {isProcessing ? (
               <>

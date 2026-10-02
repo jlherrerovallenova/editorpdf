@@ -411,14 +411,14 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
 
               <button
                 onClick={() => setShowSignModal(true)}
-                className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="Dibuja o añade tu firma"
               >
                 <FileSignature className="w-4 h-4 text-brand-600" />
                 <span>Añadir Firma</span>
               </button>
 
-              <label className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-all cursor-pointer">
+              <label className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer">
                 <Image className="w-4 h-4 text-emerald-600" />
                 <span>Insertar Imagen</span>
                 <input
@@ -566,7 +566,9 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
                         e.stopPropagation();
                         setSelectedAnnotationId(t.id);
                       }}
-                      className="absolute group z-20"
+                      className={`absolute group z-20 ${
+                        selectedAnnotationId === t.id ? 'ring-2 ring-blue-500 rounded' : ''
+                      }`}
                     >
                       <input
                         type="text"
@@ -603,7 +605,11 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
                         e.stopPropagation();
                         setSelectedAnnotationId(img.id);
                       }}
-                      className="absolute group z-20 border border-transparent hover:border-blue-400 rounded-lg p-1"
+                      className={`absolute group z-20 border rounded-lg p-1 ${
+                        selectedAnnotationId === img.id
+                          ? 'border-blue-500 ring-2 ring-blue-400'
+                          : 'border-transparent hover:border-blue-400'
+                      }`}
                     >
                       <img
                         src={img.dataUrl}
@@ -652,7 +658,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
               <button
                 onClick={handleExport}
                 disabled={isExporting}
-                className="inline-flex items-center gap-2 px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-base rounded-xl shadow-lg shadow-brand-600/30 transition-all cursor-pointer disabled:bg-slate-300"
+                className="inline-flex items-center gap-2 px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-base rounded-xl shadow-lg shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer disabled:bg-slate-300"
               >
                 {isExporting ? (
                   <>

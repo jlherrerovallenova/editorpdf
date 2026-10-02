@@ -78,7 +78,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-200 ${
+        className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-[border-color,background-color,box-shadow,transform] duration-200 ${
           isDragging
             ? 'border-brand-500 bg-brand-50/60 scale-[1.01] shadow-xl shadow-brand-500/10'
             : 'border-slate-300 hover:border-brand-400 bg-white shadow-xs'
@@ -102,7 +102,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-8 py-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-lg rounded-2xl shadow-lg shadow-brand-600/30 hover:shadow-brand-600/40 transition-all transform hover:-translate-y-0.5 cursor-pointer"
+              className="inline-flex items-center gap-2 px-8 py-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-lg rounded-2xl shadow-lg shadow-brand-600/30 hover:shadow-brand-600/40 transition-[background-color,box-shadow,transform] transform hover:-translate-y-0.5 cursor-pointer"
             >
               <FileUp className="w-5 h-5" />
               {buttonLabel || title}

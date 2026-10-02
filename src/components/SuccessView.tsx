@@ -97,7 +97,7 @@ export const SuccessView: React.FC<SuccessViewProps> = ({
       <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
         <button
           onClick={onDownload}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-lg rounded-2xl shadow-xl shadow-brand-600/30 hover:shadow-brand-600/40 transition-all transform hover:-translate-y-0.5 cursor-pointer"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-lg rounded-2xl shadow-xl shadow-brand-600/30 hover:shadow-brand-600/40 transition-[background-color,box-shadow,transform] transform hover:-translate-y-0.5 cursor-pointer"
         >
           <Download className="w-5 h-5" />
           {downloadLabel}
