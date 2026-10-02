@@ -2,6 +2,7 @@ import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { pdfjsLib } from './pdfWorker';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import JSZip from 'jszip';
+import Tesseract from 'tesseract.js';
 import type { Annotation, PageInfo } from '../types';
 
 export function formatFileSize(bytes: number): string {
@@ -619,4 +620,295 @@ export async function applyAnnotationsToPdf(
   }
 
   return await pdfDoc.save();
+}
+
+// 10. PAGE NUMBERING
+export interface PageNumberOptions {
+  position: 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+  format: 'n' | 'n_of_total' | 'page_n' | 'page_n_of_total' | 'pag_n' | 'pag_n_of_total';
+  fontSize: number;
+  colorHex: string;
+  margin: number;
+  startPage: number; // 1-indexed (e.g. 1 = all, 2 = skip first/cover)
+  startNumber: number; // starting number (e.g. 1)
+  customPrefix?: string;
+  customSuffix?: string;
+}
+
+export function formatPageNumber(pageIndex: number, totalNumberablePages: number, options: PageNumberOptions): string {
+  const currentNum = options.startNumber + pageIndex;
+  const total = options.startNumber + totalNumberablePages - 1;
+
+  switch (options.format) {
+    case 'n':
+      return `${currentNum}`;
+    case 'n_of_total':
+      return `${currentNum} / ${total}`;
+    case 'page_n':
+      return `Página ${currentNum}`;
+    case 'page_n_of_total':
+      return `Página ${currentNum} de ${total}`;
+    case 'pag_n':
+      return `Pág. ${currentNum}`;
+    case 'pag_n_of_total':
+      return `Pág. ${currentNum} de ${total}`;
+    default:
+      return `${currentNum}`;
+  }
+}
+
+export async function addPageNumbersToPdf(
+  pdfData: ArrayBuffer,
+  options: PageNumberOptions
+): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.load(pdfData, { ignoreEncryption: true });
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const color = hexToRgbColor(options.colorHex || '#333333');
+  const pages = pdfDoc.getPages();
+  const totalPages = pages.length;
+
+  const startIndex = Math.max(0, options.startPage - 1);
+  const numberableCount = Math.max(1, totalPages - startIndex);
+  const isCenter = options.position.includes('center');
+  const isRight = options.position.includes('right');
+  const isTop = options.position.startsWith('top');
+  const margin = options.margin || 30;
+
+  for (let i = startIndex; i < totalPages; i++) {
+    const page = pages[i];
+    const { width, height } = page.getSize();
+    const pageOffset = i - startIndex;
+    const rawText = formatPageNumber(pageOffset, numberableCount, options);
+    const text = `${options.customPrefix || ''}${rawText}${options.customSuffix || ''}`;
+
+    const textWidth = font.widthOfTextAtSize(text, options.fontSize);
+    const textHeight = font.heightAtSize(options.fontSize);
+
+    let x = margin;
+    let y = margin;
+
+    if (isCenter) {
+      x = (width - textWidth) / 2;
+    } else if (isRight) {
+      x = width - margin - textWidth;
+    } else {
+      x = margin;
+    }
+
+    if (isTop) {
+      y = height - margin - textHeight;
+    } else {
+      y = margin;
+    }
+
+    page.drawText(text, {
+      x,
+      y,
+      size: options.fontSize,
+      font,
+      color,
+    });
+  }
+
+  return await pdfDoc.save();
+}
+
+// 11. CHECK PDF PASSWORD & ENCRYPTION
+export async function checkPdfPassword(
+  pdfData: ArrayBuffer | Uint8Array,
+  password = ''
+): Promise<{ isEncrypted: boolean; isValid: boolean; error?: string }> {
+  try {
+    const cloned = clonePdfData(pdfData);
+    const loadingTask = pdfjsLib.getDocument({
+      data: cloned,
+      password,
+      cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/cmaps/',
+      cMapPacked: true,
+    });
+    await loadingTask.promise;
+    return { isEncrypted: false, isValid: true };
+  } catch (err: any) {
+    if (err?.name === 'PasswordException') {
+      if (err.code === 2) {
+        return { isEncrypted: true, isValid: false, error: 'Contraseña incorrecta' };
+      }
+      return { isEncrypted: true, isValid: false, error: 'Este documento está protegido con contraseña' };
+    }
+    return { isEncrypted: false, isValid: false, error: err?.message || 'Error al leer el archivo PDF' };
+  }
+}
+
+// 12. UNLOCK PDF (STRIP PASSWORD & RE-SAVE)
+export async function unlockPdf(
+  pdfData: ArrayBuffer,
+  password: string
+): Promise<Uint8Array> {
+  const cloned = clonePdfData(pdfData);
+  let pdfJsDoc;
+  try {
+    pdfJsDoc = await pdfjsLib.getDocument({
+      data: cloned,
+      password,
+      cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/cmaps/',
+      cMapPacked: true,
+    }).promise;
+  } catch (err: any) {
+    if (err?.name === 'PasswordException') {
+      throw new Error('La contraseña proporcionada es incorrecta.');
+    }
+    throw new Error('No se pudo abrir el documento PDF cifrado: ' + (err?.message || ''));
+  }
+
+  // 1st attempt: Remove encryption trailer directly with pdf-lib
+  try {
+    const loadedDoc = await PDFDocument.load(pdfData, { ignoreEncryption: true });
+    if ((loadedDoc.context as any)?.trailerInfo?.Encrypt) {
+      delete (loadedDoc.context as any).trailerInfo.Encrypt;
+    }
+    const saved = await loadedDoc.save();
+    const checkDoc = await PDFDocument.load(saved);
+    if (!checkDoc.isEncrypted) {
+      return saved;
+    }
+  } catch {
+    // Continue to fallback
+  }
+
+  // Fallback: render verified unlocked pages to crisp vector-quality high-res PDF
+  const total = pdfJsDoc.numPages;
+  const newPdf = await PDFDocument.create();
+
+  for (let i = 1; i <= total; i++) {
+    const page = await pdfJsDoc.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) continue;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const embedded = await newPdf.embedJpg(dataUrl);
+    const origViewport = page.getViewport({ scale: 1.0 });
+    const newPage = newPdf.addPage([origViewport.width, origViewport.height]);
+    newPage.drawImage(embedded, {
+      x: 0,
+      y: 0,
+      width: origViewport.width,
+      height: origViewport.height,
+    });
+  }
+
+  return await newPdf.save();
+}
+
+// 13. OCR (OPTICAL CHARACTER RECOGNITION)
+export interface OcrResult {
+  fullText: string;
+  pages: {
+    pageNumber: number;
+    text: string;
+    confidence: number;
+  }[];
+}
+
+export async function performOcr(
+  file: File,
+  language: string = 'spa',
+  onProgress?: (progressText: string, percentage: number) => void
+): Promise<OcrResult> {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  const pages: { pageNumber: number; text: string; confidence: number }[] = [];
+
+  if (isPdf) {
+    const buffer = await file.arrayBuffer();
+    const pdfJsDoc = await getPdfJsDocument(buffer);
+    const total = pdfJsDoc.numPages;
+
+    for (let i = 1; i <= total; i++) {
+      if (onProgress) {
+        onProgress(`Renderizando página ${i} de ${total}...`, Math.round(((i - 1) / total) * 100));
+      }
+
+      const page = await pdfJsDoc.getPage(i);
+      const viewport = page.getViewport({ scale: 2.0 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      const pageBaseProgress = ((i - 1) / total) * 100;
+      const pageSlice = 100 / total;
+
+      const { data } = await Tesseract.recognize(canvas, language, {
+        logger: (m) => {
+          if (m.status === 'recognizing text' && onProgress) {
+            const currentTotalPct = Math.min(
+              99,
+              Math.round(pageBaseProgress + m.progress * pageSlice)
+            );
+            onProgress(
+              `Página ${i}/${total}: Reconociendo texto (${Math.round(m.progress * 100)}%)...`,
+              currentTotalPct
+            );
+          }
+        },
+      });
+
+      pages.push({
+        pageNumber: i,
+        text: data.text.trim(),
+        confidence: Math.round(data.confidence),
+      });
+    }
+  } else {
+    if (onProgress) {
+      onProgress('Cargando imagen e inicializando motor OCR...', 10);
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const { data } = await Tesseract.recognize(dataUrl, language, {
+      logger: (m) => {
+        if (m.status === 'recognizing text' && onProgress) {
+          onProgress(
+            `Reconociendo caracteres (${Math.round(m.progress * 100)}%)...`,
+            Math.round(m.progress * 100)
+          );
+        } else if (onProgress) {
+          onProgress(m.status, 20);
+        }
+      },
+    });
+
+    pages.push({
+      pageNumber: 1,
+      text: data.text.trim(),
+      confidence: Math.round(data.confidence),
+    });
+  }
+
+  const fullText = pages
+    .map((p) => (pages.length > 1 ? `--- PÁGINA ${p.pageNumber} ---\n\n${p.text}` : p.text))
+    .join('\n\n');
+
+  if (onProgress) {
+    onProgress('¡Reconocimiento completado con éxito!', 100);
+  }
+
+  return { fullText, pages };
 }

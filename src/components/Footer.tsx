@@ -66,6 +66,11 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTool }) => {
                   Organizar y Rotar páginas
                 </button>
               </li>
+              <li>
+                <button onClick={() => onSelectTool('compare')} className="hover:text-brand-400 transition-colors cursor-pointer">
+                  Comparar PDFs
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -89,6 +94,11 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTool }) => {
                   Añadir Marca de Agua
                 </button>
               </li>
+              <li>
+                <button onClick={() => onSelectTool('page-number')} className="hover:text-brand-400 transition-colors cursor-pointer">
+                  Numerar Páginas
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -97,6 +107,11 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTool }) => {
               Convertir & Seguridad
             </h3>
             <ul className="space-y-2 text-sm text-slate-300">
+              <li>
+                <button onClick={() => onSelectTool('ocr')} className="hover:text-brand-400 transition-colors cursor-pointer">
+                  OCR Reconocer Texto
+                </button>
+              </li>
               <li>
                 <button onClick={() => onSelectTool('img-to-pdf')} className="hover:text-brand-400 transition-colors cursor-pointer">
                   JPG / Imagen a PDF
@@ -110,6 +125,11 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTool }) => {
               <li>
                 <button onClick={() => onSelectTool('protect')} className="hover:text-brand-400 transition-colors cursor-pointer">
                   Proteger con Contraseña
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onSelectTool('unlock')} className="hover:text-brand-400 transition-colors cursor-pointer">
+                  Desbloquear PDF
                 </button>
               </li>
             </ul>

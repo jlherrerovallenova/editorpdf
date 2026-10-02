@@ -11,6 +11,10 @@ import { ImageToPdfTool } from './tools/ImageToPdfTool';
 import { PdfToImageTool } from './tools/PdfToImageTool';
 import { WatermarkTool } from './tools/WatermarkTool';
 import { ProtectTool } from './tools/ProtectTool';
+import { PageNumberTool } from './tools/PageNumberTool';
+import { OcrTool } from './tools/OcrTool';
+import { CompareTool } from './tools/CompareTool';
+import { UnlockTool } from './tools/UnlockTool';
 import type { ToolId } from './types';
 
 export function App() {
@@ -38,6 +42,10 @@ export function App() {
         {currentTool === 'pdf-to-img' && <PdfToImageTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'watermark' && <WatermarkTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'protect' && <ProtectTool onHome={() => handleSelectTool(null)} />}
+        {currentTool === 'page-number' && <PageNumberTool onHome={() => handleSelectTool(null)} />}
+        {currentTool === 'ocr' && <OcrTool onHome={() => handleSelectTool(null)} />}
+        {currentTool === 'compare' && <CompareTool onHome={() => handleSelectTool(null)} />}
+        {currentTool === 'unlock' && <UnlockTool onHome={() => handleSelectTool(null)} />}
       </main>
 
       {/* Footer */}

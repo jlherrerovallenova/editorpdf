@@ -7,7 +7,11 @@ export type ToolId =
   | 'pdf-to-img'
   | 'img-to-pdf'
   | 'watermark'
-  | 'protect';
+  | 'protect'
+  | 'ocr'
+  | 'page-number'
+  | 'unlock'
+  | 'compare';
 
 export type ToolCategory = 'organize' | 'optimize' | 'convert' | 'edit' | 'security';
 

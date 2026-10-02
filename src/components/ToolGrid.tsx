@@ -12,6 +12,10 @@ import {
   Search,
   Sparkles,
   ArrowRight,
+  Hash,
+  ScanText,
+  GitCompare,
+  Unlock,
 } from 'lucide-react';
 import { TOOLS } from '../data/tools';
 import type { ToolDef, ToolId, ToolCategory } from '../types';
@@ -30,6 +34,10 @@ const iconMap: Record<string, React.FC<{ className?: string }>> = {
   ImagePlus,
   Stamp,
   Lock,
+  Hash,
+  ScanText,
+  GitCompare,
+  Unlock,
 };
 
 export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
