@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Hash,
   FileCheck,
@@ -163,7 +163,7 @@ export const PageNumberTool: React.FC<PageNumberToolProps> = ({ onHome }) => {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Controls Panel */}
-          <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+          <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
             <div className="flex items-center justify-between pb-6 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600">
@@ -234,7 +234,7 @@ export const PageNumberTool: React.FC<PageNumberToolProps> = ({ onHome }) => {
                 aria-label="Formato de numeración"
                 value={format}
                 onChange={(e) => setFormat(e.target.value as any)}
-                className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
               >
                 {FORMATS.map((fmt) => (
                   <option key={fmt.id} value={fmt.id}>
@@ -258,7 +258,7 @@ export const PageNumberTool: React.FC<PageNumberToolProps> = ({ onHome }) => {
                   aria-label="Página de inicio"
                   value={startPage}
                   onChange={(e) => setStartPage(Number(e.target.value))}
-                  className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                  className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 >
                   <option value={1}>Página 1 (Todo el documento)</option>
                   <option value={2}>Página 2 (Omitir portada)</option>
@@ -278,7 +278,7 @@ export const PageNumberTool: React.FC<PageNumberToolProps> = ({ onHome }) => {
                   aria-label="Tamaño de fuente"
                   value={fontSize}
                   onChange={(e) => setFontSize(Number(e.target.value))}
-                  className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                  className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 >
                   <option value={9}>Pequeño (9 pt)</option>
                   <option value={11}>Mediano (11 pt)</option>
@@ -364,7 +364,7 @@ export const PageNumberTool: React.FC<PageNumberToolProps> = ({ onHome }) => {
           </div>
 
           {/* Interactive Live Page Preview */}
-          <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+          <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <Eye className="w-4 h-4 text-sky-600" />

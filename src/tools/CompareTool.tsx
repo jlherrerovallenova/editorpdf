@@ -203,7 +203,7 @@ export const CompareTool: React.FC<CompareToolProps> = ({ onHome: _onHome }) => 
         </div>
       ) : (
         /* Comparison Viewport */
-        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-4">
           {/* Top Bar with Mode Switcher & Page Navigation */}
           <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
             {/* View Mode Buttons */}
@@ -211,7 +211,7 @@ export const CompareTool: React.FC<CompareToolProps> = ({ onHome: _onHome }) => 
               <button
                 onClick={() => setViewMode('slider')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                  viewMode === 'slider' ? 'bg-white text-violet-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  viewMode === 'slider' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Sliders className="w-3.5 h-3.5" />
@@ -222,7 +222,7 @@ export const CompareTool: React.FC<CompareToolProps> = ({ onHome: _onHome }) => 
                 onClick={() => setViewMode('side-by-side')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
                   viewMode === 'side-by-side'
-                    ? 'bg-white text-violet-700 shadow-xs'
+                    ? 'bg-white text-violet-700 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -233,7 +233,7 @@ export const CompareTool: React.FC<CompareToolProps> = ({ onHome: _onHome }) => 
               <button
                 onClick={() => setViewMode('blend')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                  viewMode === 'blend' ? 'bg-white text-violet-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  viewMode === 'blend' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />

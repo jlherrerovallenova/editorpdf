@@ -81,7 +81,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-[border-color,background-color,box-shadow,transform] duration-200 ${
           isDragging
             ? 'border-brand-500 bg-brand-50/60 scale-[1.01] shadow-xl shadow-brand-500/10'
-            : 'border-slate-300 hover:border-brand-400 bg-white shadow-xs'
+            : 'border-slate-300 hover:border-brand-400 bg-white shadow-sm'
         }`}
       >
         <input

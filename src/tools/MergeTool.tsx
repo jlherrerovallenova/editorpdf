@@ -156,7 +156,7 @@ export const MergeTool: React.FC<MergeToolProps> = ({ onHome }) => {
       ) : (
         <div className="space-y-6">
           {/* Action bar above files */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
             <div className="flex items-center gap-3">
               <span className="font-bold text-slate-800 text-sm">
                 {files.length} {files.length === 1 ? 'archivo añadido' : 'archivos añadidos'}
@@ -197,7 +197,7 @@ export const MergeTool: React.FC<MergeToolProps> = ({ onHome }) => {
             {files.map((item, index) => (
               <div
                 key={item.id}
-                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs hover:border-brand-300 transition-[border-color,box-shadow] flex flex-col justify-between group"
+                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:border-brand-300 transition-[border-color,box-shadow] flex flex-col justify-between group"
               >
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-12 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center text-brand-600 shrink-0 font-bold text-xs">

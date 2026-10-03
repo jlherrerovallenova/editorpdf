@@ -7,11 +7,10 @@ import {
   ArrowDown,
   Loader2,
   AlertCircle,
-  FileCheck,
 } from 'lucide-react';
 import { Dropzone } from '../components/Dropzone';
 import { SuccessView } from '../components/SuccessView';
-import { imagesToPdf, downloadBlob, formatFileSize } from '../utils/pdfUtils';
+import { imagesToPdf, downloadBlob } from '../utils/pdfUtils';
 
 interface ImageItem {
   id: string;
@@ -153,7 +152,7 @@ export const ImageToPdfTool: React.FC<ImageToPdfToolProps> = ({ onHome }) => {
       ) : (
         <div className="space-y-6">
           {/* Options Box */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Orientación
@@ -264,9 +263,9 @@ export const ImageToPdfTool: React.FC<ImageToPdfToolProps> = ({ onHome }) => {
             {images.map((img, index) => (
               <div
                 key={img.id}
-                className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs flex flex-col justify-between group hover:border-pink-400"
+                className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-sm flex flex-col justify-between group hover:border-pink-400"
               >
-                <div className="relative aspect-3/4 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
                   <img
                     src={img.dataUrl}
                     alt={img.file.name}

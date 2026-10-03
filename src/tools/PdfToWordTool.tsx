@@ -142,7 +142,7 @@ export const PdfToWordTool: React.FC<PdfToWordToolProps> = ({ onHome }) => {
           subtitle="o arrastra tu documento PDF aquí para generar un .DOCX editable"
         />
       ) : (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
           {/* File Selected Card */}
           <div className="flex items-center justify-between pb-6 border-b border-slate-100">
             <div className="flex items-center gap-3">
@@ -253,7 +253,7 @@ export const PdfToWordTool: React.FC<PdfToWordToolProps> = ({ onHome }) => {
                 aria-label="Idioma del texto escaneado"
                 value={ocrLanguage}
                 onChange={(e) => setOcrLanguage(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-teal-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                className="w-full px-3.5 py-2.5 bg-white border border-teal-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
               >
                 {OCR_LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>

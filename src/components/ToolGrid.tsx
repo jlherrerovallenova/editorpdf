@@ -102,7 +102,7 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar herramienta (ej: unir, comprimir, firmar...)"
-            className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-medium shadow-xs focus:ring-2 focus:ring-brand-500 focus:outline-hidden transition-colors"
+            className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-medium shadow-sm focus:ring-2 focus:ring-brand-500 focus:outline-none transition-colors"
           />
         </div>
 
@@ -201,7 +201,7 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
               type="button"
               key={tool.id}
               onClick={() => onSelectTool(tool.id)}
-              className="text-left w-full group bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 hover:border-brand-500/50 shadow-xs hover:shadow-xl hover:shadow-brand-500/5 transition-[border-color,box-shadow,transform] duration-200 cursor-pointer flex flex-col justify-between transform hover:-translate-y-1 relative overflow-hidden"
+              className="text-left w-full group bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 hover:border-brand-500/50 shadow-sm hover:shadow-xl hover:shadow-brand-500/5 transition-[border-color,box-shadow,transform] duration-200 cursor-pointer flex flex-col justify-between transform hover:-translate-y-1 relative overflow-hidden"
             >
               {/* Subtle top accent gradient */}
               <div
@@ -212,7 +212,7 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
               <div>
                 <div className="flex items-start justify-between mb-5">
                   <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 shadow-xs"
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 shadow-sm"
                     style={{ backgroundColor: `${tool.color}15`, color: tool.color }}
                   >
                     <IconComponent className="w-7 h-7" />
@@ -220,7 +220,7 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
 
                   {tool.badge && (
                     <span
-                      className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-lg shadow-2xs"
+                      className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-lg shadow-sm"
                       style={{
                         backgroundColor: `${tool.color}15`,
                         color: tool.color,

@@ -2,7 +2,7 @@ import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { pdfjsLib } from './pdfWorker';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import JSZip from 'jszip';
-import Tesseract from 'tesseract.js';
+import { recognize } from 'tesseract.js';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, PageBreak } from 'docx';
 import type { Annotation, PageInfo } from '../types';
 
@@ -851,7 +851,7 @@ export async function performOcr(
       const pageBaseProgress = ((i - 1) / total) * 100;
       const pageSlice = 100 / total;
 
-      const { data } = await Tesseract.recognize(canvas, language, {
+      const { data } = await recognize(canvas, language, {
         logger: (m) => {
           if (m.status === 'recognizing text' && onProgress) {
             const currentTotalPct = Math.min(
@@ -883,7 +883,7 @@ export async function performOcr(
       reader.readAsDataURL(file);
     });
 
-    const { data } = await Tesseract.recognize(dataUrl, language, {
+    const { data } = await recognize(dataUrl, language, {
       logger: (m) => {
         if (m.status === 'recognizing text' && onProgress) {
           onProgress(
@@ -1056,7 +1056,7 @@ export async function convertPdfToWord(
         await page.render({ canvasContext: ctx, viewport }).promise;
 
         const lang = options.language || 'spa';
-        const { data } = await Tesseract.recognize(canvas, lang);
+        const { data } = await recognize(canvas, lang);
         const lines = data.text.split('\n').map((l) => l.trim()).filter(Boolean);
 
         for (const line of lines) {

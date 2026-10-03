@@ -181,7 +181,7 @@ export const OcrTool: React.FC<OcrToolProps> = ({ onHome: _onHome }) => {
           subtitle="Soporta documentos PDF escaneados, fotos o capturas PNG/JPG"
         />
       ) : !ocrResult ? (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
           <div className="flex items-center justify-between pb-6 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-600">
@@ -221,7 +221,7 @@ export const OcrTool: React.FC<OcrToolProps> = ({ onHome: _onHome }) => {
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
                 disabled={isProcessing}
-                className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-hidden disabled:bg-slate-100"
+                className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none disabled:bg-slate-100"
               >
                 {SUPPORTED_LANGUAGES.map((lang) => (
                   <option key={lang.code} value={lang.code}>
@@ -284,7 +284,7 @@ export const OcrTool: React.FC<OcrToolProps> = ({ onHome: _onHome }) => {
         </div>
       ) : (
         /* Results View */
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
           {/* Header Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
             <div>
@@ -368,7 +368,7 @@ export const OcrTool: React.FC<OcrToolProps> = ({ onHome: _onHome }) => {
                 placeholder="Buscar palabra..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none"
               />
             </div>
           </div>
@@ -420,7 +420,7 @@ export const OcrTool: React.FC<OcrToolProps> = ({ onHome: _onHome }) => {
                 }
               }}
               rows={15}
-              className="w-full p-4 font-mono text-sm leading-relaxed bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-hidden resize-y text-slate-800"
+              className="w-full p-4 font-mono text-sm leading-relaxed bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none resize-y text-slate-800"
             />
           </div>
 

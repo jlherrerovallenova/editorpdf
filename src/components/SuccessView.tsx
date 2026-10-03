@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { Download, CheckCircle2, RotateCcw, Home, Sparkles } from 'lucide-react';
+import { Download, CheckCircle2, RotateCcw, Home } from 'lucide-react';
 import { formatFileSize } from '../utils/pdfUtils';
 
 interface SuccessViewProps {
@@ -37,7 +37,7 @@ export const SuccessView: React.FC<SuccessViewProps> = ({
         origin: { y: 0.6 },
         colors: ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'],
       });
-    } catch (e) {
+    } catch {
       // ignore in environments without canvas
     }
   }, []);

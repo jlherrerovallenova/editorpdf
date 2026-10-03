@@ -123,7 +123,7 @@ export const UnlockTool: React.FC<UnlockToolProps> = ({ onHome }) => {
           subtitle="o arrastra el PDF con contraseña aquí para desbloquearlo"
         />
       ) : (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
           <div className="flex items-center justify-between pb-6 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-600">
@@ -187,7 +187,7 @@ export const UnlockTool: React.FC<UnlockToolProps> = ({ onHome }) => {
                       }
                     }}
                     placeholder="Introduce la contraseña para desbloquear"
-                    className="w-full px-4 py-3.5 pr-11 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-cyan-500 focus:outline-hidden"
+                    className="w-full px-4 py-3.5 pr-11 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-cyan-500 focus:outline-none"
                   />
                   <button
                     type="button"

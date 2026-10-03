@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import {
   Split,
-  Layers,
   CheckSquare,
   Square,
-  Download,
   Loader2,
   AlertCircle,
   FileCheck,
@@ -175,7 +173,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
           subtitle="o arrastra un PDF aquí para extraer sus páginas"
         />
       ) : isLoadingPages ? (
-        <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-xs">
+        <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-sm">
           <Loader2 className="w-10 h-10 text-brand-600 animate-spin mx-auto mb-4" />
           <h3 className="text-lg font-bold text-slate-800">Cargando páginas del documento...</h3>
           <p className="text-slate-400 text-sm mt-1">Generando vistas previas de alta resolución</p>
@@ -183,7 +181,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
       ) : (
         <div className="space-y-6">
           {/* Options Header Bar */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
             <h3 className="font-bold text-slate-900 text-base mb-4">Elige cómo dividir tu PDF</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -258,7 +256,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
                     value={rangeString}
                     onChange={(e) => setRangeString(e.target.value)}
                     placeholder="ej: 1-3, 4-5"
-                    className="w-full sm:w-64 px-4 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-hidden"
+                    className="w-full sm:w-64 px-4 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
                   />
                 </div>
                 <p className="text-xs text-slate-400 self-end mb-2">
@@ -307,7 +305,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="relative aspect-3/4 rounded-xl overflow-hidden bg-slate-100 border border-slate-100 flex items-center justify-center">
+                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 border border-slate-100 flex items-center justify-center">
                     <img
                       src={p.thumbnailUrl}
                       alt={`Página ${p.pageNumber}`}
@@ -318,7 +316,7 @@ export const SplitTool: React.FC<SplitToolProps> = ({ onHome }) => {
                     {splitMode === 'extract' && (
                       <div className="absolute top-2 right-2">
                         {isSelected ? (
-                          <div className="w-6 h-6 rounded-md bg-brand-600 text-white flex items-center justify-center shadow-xs">
+                          <div className="w-6 h-6 rounded-md bg-brand-600 text-white flex items-center justify-center shadow-sm">
                             <CheckSquare className="w-4 h-4" />
                           </div>
                         ) : (

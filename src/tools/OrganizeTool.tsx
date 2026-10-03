@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Layers,
   RotateCw,
-  RotateCcw,
   Trash2,
   Undo2,
   ArrowLeft,
@@ -194,7 +193,7 @@ export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
           subtitle="o arrastra un PDF aquí para ordenar sus páginas"
         />
       ) : isLoading ? (
-        <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-xs">
+        <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-sm">
           <Loader2 className="w-10 h-10 text-orange-500 animate-spin mx-auto mb-4" />
           <h3 className="text-lg font-bold text-slate-800">Cargando páginas para organizar...</h3>
           <p className="text-slate-400 text-sm mt-1">Generando cuadrícula interactiva</p>
@@ -202,7 +201,7 @@ export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
       ) : (
         <div className="space-y-6">
           {/* Action toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-slate-800">
                 {activeCount} de {pages.length} páginas visibles
@@ -240,7 +239,7 @@ export const OrganizeTool: React.FC<OrganizeToolProps> = ({ onHome }) => {
                 }`}
               >
                 {/* Thumbnail with rotation applied */}
-                <div className="relative aspect-3/4 rounded-xl overflow-hidden bg-slate-100 border border-slate-100 flex items-center justify-center p-1">
+                <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 border border-slate-100 flex items-center justify-center p-1">
                   <img
                     src={p.thumbnailUrl}
                     alt={`Página ${p.displayNumber}`}

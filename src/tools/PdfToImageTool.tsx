@@ -85,7 +85,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
         />
 
         {/* Gallery preview of all extracted images */}
-        <div className="mt-12 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs">
+        <div className="mt-12 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
           <h3 className="font-bold text-slate-800 text-lg mb-6">
             Vistas previas individuales:
           </h3>
@@ -95,7 +95,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
                 key={img.name}
                 className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between group"
               >
-                <div className="relative aspect-3/4 rounded-xl overflow-hidden bg-white border border-slate-100 flex items-center justify-center p-1">
+                <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-white border border-slate-100 flex items-center justify-center p-1">
                   <img src={img.dataUrl} alt={img.name} className="max-w-full max-h-full object-contain" />
                 </div>
                 <div className="mt-3 flex items-center justify-between">
@@ -141,7 +141,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
           subtitle="o arrastra un PDF aquí para extraer sus imágenes"
         />
       ) : (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
           <div className="flex items-center justify-between pb-6 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
@@ -174,7 +174,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
                   onClick={() => setFormat('image/jpeg')}
                   className={`py-3 px-3 text-xs font-bold rounded-2xl border transition-all cursor-pointer ${
                     format === 'image/jpeg'
-                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-xs'
+                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-sm'
                       : 'border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}
                 >
@@ -185,7 +185,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
                   onClick={() => setFormat('image/png')}
                   className={`py-3 px-3 text-xs font-bold rounded-2xl border transition-all cursor-pointer ${
                     format === 'image/png'
-                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-xs'
+                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-sm'
                       : 'border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}
                 >
@@ -204,7 +204,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
                   onClick={() => setQualityScale(1.5)}
                   className={`py-3 px-3 text-xs font-bold rounded-2xl border transition-all cursor-pointer ${
                     qualityScale === 1.5
-                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-xs'
+                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-sm'
                       : 'border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}
                 >
@@ -215,7 +215,7 @@ export const PdfToImageTool: React.FC<PdfToImageToolProps> = ({ onHome }) => {
                   onClick={() => setQualityScale(2.5)}
                   className={`py-3 px-3 text-xs font-bold rounded-2xl border transition-all cursor-pointer ${
                     qualityScale === 2.5
-                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-xs'
+                      ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-sm'
                       : 'border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}
                 >

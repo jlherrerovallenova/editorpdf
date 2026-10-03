@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Maximize2,
   RefreshCw,
   Loader2,
   AlertCircle,

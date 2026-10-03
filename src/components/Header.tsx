@@ -23,7 +23,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ currentTool, onSelectTool }) => {
   const { canInstall, isInstalled, promptInstall } = usePwaInstall();
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Back button */}
@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTool, onSelectTool }) => 
 
             <button
               onClick={() => onSelectTool(null)}
-              className="flex items-center gap-2.5 text-left group cursor-pointer focus:outline-hidden"
+              className="flex items-center gap-2.5 text-left group cursor-pointer focus:outline-none"
             >
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center text-white shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform">
                 <FileText className="w-6 h-6" />

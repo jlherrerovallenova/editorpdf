@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Stamp,
-  Download,
   Loader2,
   AlertCircle,
-  FileCheck,
   Eye,
 } from 'lucide-react';
 import { Dropzone } from '../components/Dropzone';
@@ -42,7 +40,7 @@ export const WatermarkTool: React.FC<WatermarkToolProps> = ({ onHome }) => {
     try {
       const buffer = await f.arrayBuffer();
       setArrayBuffer(buffer);
-    } catch (e) {
+    } catch {
       setErrorMsg('No se pudo abrir el archivo PDF.');
     }
   };
@@ -164,7 +162,7 @@ export const WatermarkTool: React.FC<WatermarkToolProps> = ({ onHome }) => {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Controls column */}
-          <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-5">
+          <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <span className="font-bold text-slate-800 text-sm truncate max-w-[200px]">{file.name}</span>
               <button
@@ -185,7 +183,7 @@ export const WatermarkTool: React.FC<WatermarkToolProps> = ({ onHome }) => {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="ej: CONFIDENCIAL"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:outline-none"
               />
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {['CONFIDENCIAL', 'BORRADOR', 'COPIA', 'ORIGINAL', 'NO COPIAR'].map((badge) => (
@@ -331,7 +329,7 @@ export const WatermarkTool: React.FC<WatermarkToolProps> = ({ onHome }) => {
                   <div className="grid grid-cols-2 gap-16 transform -rotate-25 scale-125">
                     {Array.from({ length: 6 }).map((_, i) => (
                       <span
-                        key={i}
+                        key={`wm-tile-${i}`}
                         style={{
                           fontSize: `${fontSize * 0.55}px`,
                           color: colorHex,

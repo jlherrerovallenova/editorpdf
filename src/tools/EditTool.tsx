@@ -5,14 +5,12 @@ import {
   FileSignature,
   Image,
   Undo2,
-  Trash2,
   ChevronLeft,
   ChevronRight,
   Download,
   Loader2,
   AlertCircle,
   X,
-  Palette,
   Check,
 } from 'lucide-react';
 import { Dropzone } from '../components/Dropzone';
@@ -42,7 +40,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
   const [activeMode, setActiveMode] = useState<'select' | 'text' | 'draw'>('select');
   const [penColor, setPenColor] = useState<string>('#e5322d');
   const [penWidth, setPenWidth] = useState<number>(3);
-  const [textColor, setTextColor] = useState<string>('#1e293b');
+  const textColor = '#1e293b';
   const [textSize, setTextSize] = useState<number>(16);
 
   // Annotations list
@@ -60,6 +58,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
   // Drawing state
   const isDrawingRef = useRef(false);
   const currentDrawPointsRef = useRef<{ x: number; y: number }[]>([]);
+  const [liveDrawPoints, setLiveDrawPoints] = useState<{ x: number; y: number }[]>([]);
 
   // Load PDF document and initial page
   const handleFileSelected = async (files: File[]) => {
@@ -157,6 +156,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
     currentDrawPointsRef.current = [{ x, y }];
+    setLiveDrawPoints([{ x, y }]);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -166,8 +166,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
     currentDrawPointsRef.current.push({ x, y });
-
-    // Live preview on a temp canvas could be used, or force re-render
+    setLiveDrawPoints((prev) => [...prev, { x, y }]);
   };
 
   const handleMouseUp = () => {
@@ -188,6 +187,28 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
       setAnnotations((prev) => [...prev, newDrawAnn]);
     }
     currentDrawPointsRef.current = [];
+    setLiveDrawPoints([]);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (activeMode !== 'draw' || !overlayRef.current || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    isDrawingRef.current = true;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = ((touch.clientX - rect.left) / rect.width) * 100;
+    const y = ((touch.clientY - rect.top) / rect.height) * 100;
+    currentDrawPointsRef.current = [{ x, y }];
+    setLiveDrawPoints([{ x, y }]);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDrawingRef.current || activeMode !== 'draw' || !overlayRef.current || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = ((touch.clientX - rect.left) / rect.width) * 100;
+    const y = ((touch.clientY - rect.top) / rect.height) * 100;
+    currentDrawPointsRef.current.push({ x, y });
+    setLiveDrawPoints((prev) => [...prev, { x, y }]);
   };
 
   // Image insertion (Stamp / Photo)
@@ -360,7 +381,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
           subtitle="o arrastra un PDF aquí para comenzar a editarlo"
         />
       ) : isLoadingPdf ? (
-        <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-xs">
+        <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-sm">
           <Loader2 className="w-10 h-10 text-blue-600 animate-spin mx-auto mb-4" />
           <h3 className="text-lg font-bold text-slate-800">Cargando editor de PDF...</h3>
           <p className="text-slate-400 text-sm mt-1">Preparando herramientas de dibujo y texto</p>
@@ -375,7 +396,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
                 onClick={() => setActiveMode('select')}
                 className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeMode === 'select'
-                    ? 'bg-blue-600 text-white shadow-xs'
+                    ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
                 title="Modo selección y movimiento"
@@ -387,7 +408,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
                 onClick={() => setActiveMode('text')}
                 className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeMode === 'text'
-                    ? 'bg-blue-600 text-white shadow-xs'
+                    ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
                 title="Haz clic en cualquier lugar del documento para añadir texto"
@@ -398,9 +419,9 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
 
               <button
                 onClick={() => setActiveMode('draw')}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                   activeMode === 'draw'
-                    ? 'bg-blue-600 text-white shadow-xs'
+                    ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
                 title="Dibuja a mano alzada con el lápiz"
@@ -525,6 +546,9 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleMouseUp}
                 className={`absolute inset-0 z-10 ${
                   activeMode === 'text'
                     ? 'cursor-text'
@@ -548,6 +572,17 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
                         strokeLinejoin="round"
                       />
                     ))}
+                  {/* Real-time active drawing stroke preview */}
+                  {liveDrawPoints.length > 1 && (
+                    <polyline
+                      points={liveDrawPoints.map((pt) => `${pt.x}%,${pt.y}%`).join(' ')}
+                      fill="none"
+                      stroke={penColor}
+                      strokeWidth={penWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
                 </svg>
 
                 {/* Render Text Annotations */}
@@ -574,7 +609,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
                         type="text"
                         value={t.text}
                         onChange={(e) => updateTextAnnotation(t.id, e.target.value)}
-                        className="bg-transparent border border-dashed border-transparent hover:border-blue-400 focus:border-blue-500 focus:bg-white/80 rounded px-1 outline-hidden"
+                        className="bg-transparent border border-dashed border-transparent hover:border-blue-400 focus:border-blue-500 focus:bg-white/80 rounded px-1 outline-none"
                       />
                       <button
                         onClick={(e) => {
@@ -679,7 +714,7 @@ export const EditTool: React.FC<EditToolProps> = ({ onHome }) => {
 
       {/* Signature Modal */}
       {showSignModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 animate-scale-in">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">

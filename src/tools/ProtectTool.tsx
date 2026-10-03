@@ -115,7 +115,7 @@ export const ProtectTool: React.FC<ProtectToolProps> = ({ onHome }) => {
           subtitle="o arrastra un PDF aquí para protegerlo con contraseña"
         />
       ) : (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
           <div className="flex items-center justify-between pb-6 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
@@ -148,7 +148,7 @@ export const ProtectTool: React.FC<ProtectToolProps> = ({ onHome }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Introduce la contraseña"
-                  className="w-full px-4 py-3.5 pr-11 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                  className="w-full px-4 py-3.5 pr-11 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
                 <button
                   type="button"
@@ -169,7 +169,7 @@ export const ProtectTool: React.FC<ProtectToolProps> = ({ onHome }) => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Vuelve a escribir la contraseña"
-                className="w-full px-4 py-3.5 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                className="w-full px-4 py-3.5 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               />
             </div>
           </div>
