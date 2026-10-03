@@ -90,6 +90,11 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTool }) => {
                 </button>
               </li>
               <li>
+                <button onClick={() => onSelectTool('crop')} className="hover:text-brand-400 transition-colors cursor-pointer">
+                  Recortar PDF
+                </button>
+              </li>
+              <li>
                 <button onClick={() => onSelectTool('watermark')} className="hover:text-brand-400 transition-colors cursor-pointer">
                   Añadir Marca de Agua
                 </button>

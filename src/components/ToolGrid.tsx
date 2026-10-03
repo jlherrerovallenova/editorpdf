@@ -21,6 +21,7 @@ import {
   HelpCircle,
   X,
   FileText,
+  Crop,
 } from 'lucide-react';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { TOOLS } from '../data/tools';
@@ -45,6 +46,7 @@ const iconMap: Record<string, React.FC<{ className?: string }>> = {
   GitCompare,
   Unlock,
   FileText,
+  Crop,
 };
 
 export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {

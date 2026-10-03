@@ -7,6 +7,7 @@ export type ToolId =
   | 'pdf-to-img'
   | 'img-to-pdf'
   | 'pdf-to-word'
+  | 'crop'
   | 'watermark'
   | 'protect'
   | 'ocr'

@@ -1192,3 +1192,189 @@ export async function convertPdfToWord(
     paragraphCount: totalParagraphCount,
   };
 }
+
+// 15. CROP PDF (Visual Vector Crop Tool)
+export interface CropRectPercentages {
+  x: number;      // 0 to 100 (% from left)
+  y: number;      // 0 to 100 (% from top)
+  width: number;  // 0 to 100 (% of width)
+  height: number; // 0 to 100 (% of height)
+}
+
+export interface CropPdfOptions {
+  crop: CropRectPercentages;
+  targetPages: 'all' | number[];
+}
+
+export function detectPageContentMargins(canvas: HTMLCanvasElement): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return { x: 5, y: 5, width: 90, height: 90 };
+  }
+
+  const { width, height } = canvas;
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  // We consider a pixel "blank/white" if RGB values are all > 242 or alpha < 30
+  const isBlank = (idx: number) => {
+    const a = data[idx + 3];
+    if (a < 30) return true;
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
+    return r > 242 && g > 242 && b > 242;
+  };
+
+  let top = 0;
+  let bottom = height - 1;
+  let left = 0;
+  let right = width - 1;
+
+  // Scan top
+  topLoop: for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x += 2) {
+      const idx = (y * width + x) * 4;
+      if (!isBlank(idx)) {
+        top = y;
+        break topLoop;
+      }
+    }
+  }
+
+  // Scan bottom
+  bottomLoop: for (let y = height - 1; y >= top; y--) {
+    for (let x = 0; x < width; x += 2) {
+      const idx = (y * width + x) * 4;
+      if (!isBlank(idx)) {
+        bottom = y;
+        break bottomLoop;
+      }
+    }
+  }
+
+  // Scan left
+  leftLoop: for (let x = 0; x < width; x++) {
+    for (let y = top; y <= bottom; y += 2) {
+      const idx = (y * width + x) * 4;
+      if (!isBlank(idx)) {
+        left = x;
+        break leftLoop;
+      }
+    }
+  }
+
+  // Scan right
+  rightLoop: for (let x = width - 1; x >= left; x--) {
+    for (let y = top; y <= bottom; y += 2) {
+      const idx = (y * width + x) * 4;
+      if (!isBlank(idx)) {
+        right = x;
+        break rightLoop;
+      }
+    }
+  }
+
+  // Fallback if blank or unexpected
+  if (right <= left || bottom <= top) {
+    return { x: 5, y: 5, width: 90, height: 90 };
+  }
+
+  // Add 1.5% breathing room
+  const padX = width * 0.015;
+  const padY = height * 0.015;
+
+  const cropX = Math.max(0, left - padX);
+  const cropY = Math.max(0, top - padY);
+  const cropRight = Math.min(width, right + padX);
+  const cropBottom = Math.min(height, bottom + padY);
+
+  return {
+    x: Math.max(0, Math.round((cropX / width) * 1000) / 10),
+    y: Math.max(0, Math.round((cropY / height) * 1000) / 10),
+    width: Math.min(100, Math.round(((cropRight - cropX) / width) * 1000) / 10),
+    height: Math.min(100, Math.round(((cropBottom - cropY) / height) * 1000) / 10),
+  };
+}
+
+export async function cropPdf(
+  pdfData: ArrayBuffer,
+  options: CropPdfOptions,
+  onProgress?: (message: string, percent: number) => void
+): Promise<{
+  data: Uint8Array;
+  pageCount: number;
+  croppedPagesCount: number;
+}> {
+  if (onProgress) onProgress('Cargando documento PDF...', 10);
+  const [pdfJsDoc, pdfDoc] = await Promise.all([
+    getPdfJsDocument(pdfData),
+    PDFDocument.load(pdfData, { ignoreEncryption: true }),
+  ]);
+  const total = pdfDoc.getPageCount();
+
+  const isAll = options.targetPages === 'all';
+  const targetSet = new Set<number>(Array.isArray(options.targetPages) ? options.targetPages : []);
+
+  let croppedPagesCount = 0;
+
+  for (let i = 1; i <= total; i++) {
+    if (onProgress) {
+      const pct = 10 + Math.round((i / total) * 75);
+      onProgress(`Recortando página ${i} de ${total}...`, pct);
+    }
+
+    if (!isAll && !targetSet.has(i)) {
+      continue;
+    }
+
+    const pdfJsPage = await pdfJsDoc.getPage(i);
+    const viewport = pdfJsPage.getViewport({ scale: 1.0 });
+
+    const viewW = viewport.width;
+    const viewH = viewport.height;
+
+    // Convert percentage to pixel coordinates in viewport space
+    const cropX = Math.max(0, (options.crop.x / 100) * viewW);
+    const cropY = Math.max(0, (options.crop.y / 100) * viewH);
+    const cropW = Math.min(viewW - cropX, (options.crop.width / 100) * viewW);
+    const cropH = Math.min(viewH - cropY, (options.crop.height / 100) * viewH);
+
+    // 4 corners of crop box in viewport space
+    const corners = [
+      viewport.convertToPdfPoint(cropX, cropY),
+      viewport.convertToPdfPoint(cropX + cropW, cropY),
+      viewport.convertToPdfPoint(cropX + cropW, cropY + cropH),
+      viewport.convertToPdfPoint(cropX, cropY + cropH),
+    ];
+
+    const minX = Math.min(...corners.map((c) => c[0]));
+    const maxX = Math.max(...corners.map((c) => c[0]));
+    const minY = Math.min(...corners.map((c) => c[1]));
+    const maxY = Math.max(...corners.map((c) => c[1]));
+
+    const targetW = Math.max(1, maxX - minX);
+    const targetH = Math.max(1, maxY - minY);
+
+    const page = pdfDoc.getPage(i - 1);
+    page.setCropBox(minX, minY, targetW, targetH);
+    page.setMediaBox(minX, minY, targetW, targetH);
+
+    croppedPagesCount++;
+  }
+
+  if (onProgress) onProgress('Guardando documento PDF recortado...', 90);
+  const data = await pdfDoc.save();
+  if (onProgress) onProgress('¡Listo!', 100);
+
+  return {
+    data,
+    pageCount: total,
+    croppedPagesCount,
+  };
+}

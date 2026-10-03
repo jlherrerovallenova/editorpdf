@@ -46,6 +46,17 @@ export const TOOLS: ToolDef[] = [
     accentBg: 'bg-blue-50 hover:bg-blue-100/80 border-blue-200',
   },
   {
+    id: 'crop',
+    name: 'Recortar PDF',
+    shortDesc: 'Recorta visualmente las páginas de tu PDF eliminando márgenes o áreas no deseadas.',
+    fullDesc: 'Ajusta el área de visualización con marco interactivo, recorte automático de bordes en blanco y proporciones fijas manteniendo nitidez vectorial.',
+    category: 'edit',
+    badge: 'Visual',
+    icon: 'Crop',
+    color: '#0284c7',
+    accentBg: 'bg-sky-50 hover:bg-sky-100/80 border-sky-200',
+  },
+  {
     id: 'compress',
     name: 'Comprimir PDF',
     shortDesc: 'Reduce el tamaño de tu archivo PDF manteniendo la máxima calidad posible.',
