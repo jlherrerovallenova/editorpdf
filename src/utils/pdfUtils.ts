@@ -912,3 +912,81 @@ export async function performOcr(
 
   return { fullText, pages };
 }
+
+// 14. EXPORT OCR TEXT TO CLEAN SEARCHABLE PDF
+export async function exportOcrResultToPdf(
+  ocrResult: OcrResult
+): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontSize = 11;
+  const lineHeight = 16;
+  const margin = 40;
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const maxLineWidth = pageWidth - margin * 2;
+
+  for (const p of ocrResult.pages) {
+    let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+    let currentY = pageHeight - margin;
+
+    if (ocrResult.pages.length > 1) {
+      currentPage.drawText(`Página ${p.pageNumber}`, {
+        x: margin,
+        y: currentY,
+        size: 9,
+        font,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+      currentY -= 20;
+    }
+
+    const paragraphs = p.text.split('\n');
+    for (const para of paragraphs) {
+      const words = para.split(' ');
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (testWidth > maxLineWidth && currentLine) {
+          if (currentY - lineHeight < margin) {
+            currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+            currentY = pageHeight - margin;
+          }
+          currentPage.drawText(currentLine, {
+            x: margin,
+            y: currentY,
+            size: fontSize,
+            font,
+            color: rgb(0.1, 0.1, 0.1),
+          });
+          currentY -= lineHeight;
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      if (currentLine) {
+        if (currentY - lineHeight < margin) {
+          currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+          currentY = pageHeight - margin;
+        }
+        currentPage.drawText(currentLine, {
+          x: margin,
+          y: currentY,
+          size: fontSize,
+          font,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+        currentY -= lineHeight;
+      }
+
+      currentY -= 8;
+    }
+  }
+
+  return await pdfDoc.save();
+}

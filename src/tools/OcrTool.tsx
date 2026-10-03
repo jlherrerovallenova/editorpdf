@@ -14,7 +14,13 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Dropzone } from '../components/Dropzone';
-import { performOcr, downloadBlob, formatFileSize, type OcrResult } from '../utils/pdfUtils';
+import {
+  performOcr,
+  exportOcrResultToPdf,
+  downloadBlob,
+  formatFileSize,
+  type OcrResult,
+} from '../utils/pdfUtils';
 
 interface OcrToolProps {
   onHome: () => void;
@@ -108,6 +114,29 @@ export const OcrTool: React.FC<OcrToolProps> = ({ onHome: _onHome }) => {
 
     const blob = new Blob([textToDownload], { type: 'text/plain;charset=utf-8' });
     downloadBlob(blob, `${baseName}_ocr.txt`, 'text/plain');
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!file || !ocrResult) return;
+    const baseName = file.name.replace(/\.[^/.]+$/, '');
+    try {
+      // Create copy with currently edited text if user modified it
+      const resultToExport: OcrResult = {
+        ...ocrResult,
+        pages: ocrResult.pages.map((p, idx) => ({
+          ...p,
+          text:
+            selectedPageIndex === idx
+              ? editableText
+              : p.text,
+        })),
+      };
+      const pdfBytes = await exportOcrResultToPdf(resultToExport);
+      downloadBlob(pdfBytes, `${baseName}_ocr.pdf`);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg('Error al generar el PDF digitalizado.');
+    }
   };
 
   const handleReset = () => {
@@ -287,6 +316,14 @@ export const OcrTool: React.FC<OcrToolProps> = ({ onHome: _onHome }) => {
               >
                 <Download className="w-4 h-4" />
                 <span>Descargar TXT</span>
+              </button>
+
+              <button
+                onClick={handleDownloadPdf}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-md shadow-slate-900/20 transition-[background-color,box-shadow] cursor-pointer"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Descargar PDF</span>
               </button>
 
               <button
