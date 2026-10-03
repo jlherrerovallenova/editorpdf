@@ -9,7 +9,10 @@ import {
   Split,
   PenTool,
   Minimize2,
+  Download,
+  CheckCircle2,
 } from 'lucide-react';
+import { usePwaInstall } from '../hooks/usePwaInstall';
 import type { ToolId } from '../types';
 
 interface HeaderProps {
@@ -18,6 +21,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentTool, onSelectTool }) => {
+  const { canInstall, isInstalled, promptInstall } = usePwaInstall();
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -102,8 +106,28 @@ export const Header: React.FC<HeaderProps> = ({ currentTool, onSelectTool }) => 
             </button>
           </nav>
 
-          {/* Privacy badge */}
+          {/* PWA Install Button & Privacy badge */}
           <div className="flex items-center gap-2">
+            {canInstall && (
+              <button
+                type="button"
+                onClick={promptInstall}
+                aria-label="Instalar aplicación en Windows"
+                title="Instalar PDFMaster como aplicación en tu equipo"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-[background-color,box-shadow] cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Instalar App</span>
+              </button>
+            )}
+
+            {isInstalled && (
+              <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>App Instalada</span>
+              </div>
+            )}
+
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-full text-xs font-semibold">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               <span>100% Privado en tu Navegador</span>

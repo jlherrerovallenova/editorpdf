@@ -16,7 +16,12 @@ import {
   ScanText,
   GitCompare,
   Unlock,
+  Laptop,
+  Download,
+  HelpCircle,
+  X,
 } from 'lucide-react';
+import { usePwaInstall } from '../hooks/usePwaInstall';
 import { TOOLS } from '../data/tools';
 import type { ToolDef, ToolId, ToolCategory } from '../types';
 
@@ -43,6 +48,16 @@ const iconMap: Record<string, React.FC<{ className?: string }>> = {
 export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ToolCategory | 'all'>('all');
+  const [showInstructions, setShowInstructions] = useState(false);
+  const { canInstall, isInstalled, promptInstall } = usePwaInstall();
+
+  const handleInstallClick = () => {
+    if (canInstall) {
+      promptInstall();
+    } else {
+      setShowInstructions((prev) => !prev);
+    }
+  };
 
   const filteredTools = TOOLS.filter((tool) => {
     const matchesSearch =
@@ -111,6 +126,67 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {
           ))}
         </div>
       </div>
+
+      {/* PWA Windows Native App Banner */}
+      {!isInstalled && (
+        <div className="mb-10 max-w-4xl mx-auto bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-5 sm:p-6 text-white shadow-lg border border-slate-700/60 relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4 text-center sm:text-left">
+              <div className="w-12 h-12 rounded-2xl bg-brand-600 flex items-center justify-center shrink-0 shadow-md shadow-brand-500/25">
+                <Laptop className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h4 className="font-bold text-base tracking-tight">
+                  Instala PDFMaster en Windows como App Nativa
+                </h4>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Acceso directo desde tu escritorio o barra de tareas y funcionamiento 100% sin conexión a internet.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              aria-label="Instalar PDFMaster en Windows"
+              className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-extrabold rounded-xl shadow-md shadow-brand-600/30 transition-[background-color,box-shadow] cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>{canInstall ? 'Instalar en Windows' : 'Cómo Instalar'}</span>
+            </button>
+          </div>
+
+          {showInstructions && (
+            <div className="mt-4 pt-4 border-t border-slate-700/70 text-xs text-slate-300 space-y-2">
+              <div className="flex items-start justify-between">
+                <p className="font-semibold text-white flex items-center gap-1.5">
+                  <HelpCircle className="w-4 h-4 text-brand-400" />
+                  Instrucciones de instalación en Google Chrome o Microsoft Edge:
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowInstructions(false)}
+                  aria-label="Cerrar instrucciones"
+                  className="text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 pl-2 text-slate-300">
+                <li>
+                  En tu navegador, haz clic en el icono de instalación (<strong>🖥️ Instalar</strong> o <strong>➕</strong>) situado a la derecha de la barra de direcciones.
+                </li>
+                <li>
+                  Pulsa en <strong>"Instalar"</strong> en la ventana emergente.
+                </li>
+                <li>
+                  ¡Listo! Se abrirá como ventana nativa independiente y podrás anclarla a tu barra de tareas o inicio de Windows.
+                </li>
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Grid of Tools */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

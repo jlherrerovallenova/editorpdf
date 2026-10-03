@@ -1,0 +1,77 @@
+{
+  "name": "PDFMaster - Suite & Editor de PDF",
+  "short_name": "PDFMaster",
+  "description": "Herramientas PDF 100% privadas y ejecutadas localmente en tu equipo sin conexión a internet.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#e5322d",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Unir PDF",
+      "short_name": "Unir",
+      "description": "Combina múltiples PDFs en un solo documento",
+      "url": "/?tool=merge",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dividir PDF",
+      "short_name": "Dividir",
+      "description": "Extrae páginas o rangos de tu PDF",
+      "url": "/?tool=split",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Editar PDF",
+      "short_name": "Editar",
+      "description": "Firma, dibuja o anota sobre tu PDF",
+      "url": "/?tool=edit",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "OCR Reconocer Texto",
+      "short_name": "OCR",
+      "description": "Extrae texto de imágenes o PDFs escaneados",
+      "url": "/?tool=ocr",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
