@@ -178,7 +178,14 @@ export const UnlockTool: React.FC<UnlockToolProps> = ({ onHome }) => {
                     aria-label="Contraseña actual del PDF"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
+                    autoFocus
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleUnlock();
+                      }
+                    }}
                     placeholder="Introduce la contraseña para desbloquear"
                     className="w-full px-4 py-3.5 pr-11 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-cyan-500 focus:outline-hidden"
                   />

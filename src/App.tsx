@@ -15,13 +15,28 @@ import { PageNumberTool } from './tools/PageNumberTool';
 import { OcrTool } from './tools/OcrTool';
 import { CompareTool } from './tools/CompareTool';
 import { UnlockTool } from './tools/UnlockTool';
+import { useEffect } from 'react';
 import type { ToolId } from './types';
 
 export function App() {
-  const [currentTool, setCurrentTool] = useState<ToolId | null>(null);
+  const [currentTool, setCurrentTool] = useState<ToolId | null>(() => {
+    const param = new URLSearchParams(window.location.search).get('tool');
+    return (param as ToolId) || null;
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const param = new URLSearchParams(window.location.search).get('tool');
+      setCurrentTool((param as ToolId) || null);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const handleSelectTool = (id: ToolId | null) => {
     setCurrentTool(id);
+    const url = id ? `?tool=${id}` : window.location.pathname;
+    window.history.pushState(null, '', url);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
