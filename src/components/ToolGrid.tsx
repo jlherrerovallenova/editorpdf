@@ -20,6 +20,7 @@ import {
   Download,
   HelpCircle,
   X,
+  FileText,
 } from 'lucide-react';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { TOOLS } from '../data/tools';
@@ -43,6 +44,7 @@ const iconMap: Record<string, React.FC<{ className?: string }>> = {
   ScanText,
   GitCompare,
   Unlock,
+  FileText,
 };
 
 export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {

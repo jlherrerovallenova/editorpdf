@@ -3,6 +3,7 @@ import { pdfjsLib } from './pdfWorker';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import JSZip from 'jszip';
 import Tesseract from 'tesseract.js';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, PageBreak } from 'docx';
 import type { Annotation, PageInfo } from '../types';
 
 export function formatFileSize(bytes: number): string {
@@ -989,4 +990,205 @@ export async function exportOcrResultToPdf(
   }
 
   return await pdfDoc.save();
+}
+
+// 15. CONVERT PDF TO WORD (.DOCX)
+export interface PdfToWordOptions {
+  mode: 'auto' | 'ocr' | 'standard';
+  language?: string;
+  detectHeadings?: boolean;
+  addPageBreaks?: boolean;
+}
+
+export interface PdfToWordResult {
+  docxBlob: Blob;
+  pageCount: number;
+  wordCount: number;
+  paragraphCount: number;
+}
+
+export async function convertPdfToWord(
+  pdfData: ArrayBuffer,
+  options: PdfToWordOptions = { mode: 'auto', language: 'spa', detectHeadings: true, addPageBreaks: true },
+  onProgress?: (statusText: string, percentage: number) => void
+): Promise<PdfToWordResult> {
+  const pdfJsDoc = await getPdfJsDocument(pdfData);
+  const total = pdfJsDoc.numPages;
+  const docxParagraphs: Paragraph[] = [];
+  let totalWordCount = 0;
+  let totalParagraphCount = 0;
+
+  for (let pageNum = 1; pageNum <= total; pageNum++) {
+    if (onProgress) {
+      const pct = Math.round(((pageNum - 1) / total) * 90);
+      onProgress(`Procesando página ${pageNum} de ${total}...`, pct);
+    }
+
+    const page = await pdfJsDoc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const items = textContent.items as Array<{
+      str: string;
+      transform: number[];
+      width: number;
+      height: number;
+      fontName?: string;
+    }>;
+
+    const hasEnoughText = items.filter((it) => it.str.trim().length > 0).length >= 5;
+    const shouldUseOcr = options.mode === 'ocr' || (options.mode === 'auto' && !hasEnoughText);
+
+    if (shouldUseOcr) {
+      if (onProgress) {
+        onProgress(
+          `Página ${pageNum} de ${total}: Aplicando OCR para texto escaneado...`,
+          Math.round(((pageNum - 0.5) / total) * 90)
+        );
+      }
+      const viewport = page.getViewport({ scale: 2.0 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const lang = options.language || 'spa';
+        const { data } = await Tesseract.recognize(canvas, lang);
+        const lines = data.text.split('\n').map((l) => l.trim()).filter(Boolean);
+
+        for (const line of lines) {
+          const words = line.split(/\s+/).filter(Boolean);
+          totalWordCount += words.length;
+          totalParagraphCount++;
+
+          docxParagraphs.push(
+            new Paragraph({
+              children: [new TextRun({ text: line, size: 24 })],
+              spacing: { after: 120 },
+            })
+          );
+        }
+      }
+    } else {
+      const lines: { y: number; items: typeof items }[] = [];
+      const sortedItems = [...items].sort((a, b) => b.transform[5] - a.transform[5]);
+
+      for (const item of sortedItems) {
+        if (!item.str.trim()) continue;
+        const itemY = item.transform[5];
+        const existingLine = lines.find((l) => Math.abs(l.y - itemY) <= 4);
+
+        if (existingLine) {
+          existingLine.items.push(item);
+        } else {
+          lines.push({ y: itemY, items: [item] });
+        }
+      }
+
+      lines.sort((a, b) => b.y - a.y);
+
+      const fontSizes: number[] = [];
+      for (const line of lines) {
+        for (const item of line.items) {
+          const size = Math.abs(item.transform[0]) || 12;
+          fontSizes.push(size);
+        }
+      }
+      const avgFontSize = fontSizes.length > 0 ? fontSizes.reduce((a, b) => a + b, 0) / fontSizes.length : 12;
+
+      for (const line of lines) {
+        line.items.sort((a, b) => a.transform[4] - b.transform[4]);
+        const lineText = line.items.map((it) => it.str).join(' ').trim();
+        if (!lineText) continue;
+
+        const words = lineText.split(/\s+/).filter(Boolean);
+        totalWordCount += words.length;
+        totalParagraphCount++;
+
+        const maxLineFontSize = Math.max(...line.items.map((it) => Math.abs(it.transform[0]) || 12));
+        const isHeading1 = options.detectHeadings && maxLineFontSize >= avgFontSize * 1.5 && lineText.length < 90;
+        const isHeading2 = options.detectHeadings && maxLineFontSize >= avgFontSize * 1.25 && !isHeading1 && lineText.length < 110;
+
+        if (isHeading1) {
+          docxParagraphs.push(
+            new Paragraph({
+              text: lineText,
+              heading: HeadingLevel.HEADING_1,
+              spacing: { before: 240, after: 120 },
+            })
+          );
+        } else if (isHeading2) {
+          docxParagraphs.push(
+            new Paragraph({
+              text: lineText,
+              heading: HeadingLevel.HEADING_2,
+              spacing: { before: 180, after: 100 },
+            })
+          );
+        } else {
+          const isBullet = lineText.startsWith('•') || lineText.startsWith('-') || lineText.startsWith('*');
+          const cleanText = isBullet ? lineText.replace(/^[•\-*]\s*/, '') : lineText;
+
+          docxParagraphs.push(
+            new Paragraph({
+              bullet: isBullet ? { level: 0 } : undefined,
+              children: [
+                new TextRun({
+                  text: cleanText,
+                  size: Math.round(maxLineFontSize * 2),
+                }),
+              ],
+              spacing: { after: 120 },
+            })
+          );
+        }
+      }
+    }
+
+    if (options.addPageBreaks && pageNum < total) {
+      docxParagraphs.push(
+        new Paragraph({
+          children: [new PageBreak()],
+        })
+      );
+    }
+  }
+
+  if (onProgress) {
+    onProgress('Empaquetando documento Word (.docx)...', 95);
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 1440,
+              right: 1440,
+              bottom: 1440,
+              left: 1440,
+            },
+          },
+        },
+        children: docxParagraphs.length > 0 ? docxParagraphs : [new Paragraph({ text: 'Documento PDF sin texto' })],
+      },
+    ],
+  });
+
+  const docxBlob = await Packer.toBlob(doc);
+
+  if (onProgress) {
+    onProgress('¡Conversión completada con éxito!', 100);
+  }
+
+  return {
+    docxBlob,
+    pageCount: total,
+    wordCount: totalWordCount,
+    paragraphCount: totalParagraphCount,
+  };
 }

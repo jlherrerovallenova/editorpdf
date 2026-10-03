@@ -15,6 +15,7 @@ import { PageNumberTool } from './tools/PageNumberTool';
 import { OcrTool } from './tools/OcrTool';
 import { CompareTool } from './tools/CompareTool';
 import { UnlockTool } from './tools/UnlockTool';
+import { PdfToWordTool } from './tools/PdfToWordTool';
 import { useEffect } from 'react';
 import type { ToolId } from './types';
 
@@ -61,6 +62,7 @@ export function App() {
         {currentTool === 'ocr' && <OcrTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'compare' && <CompareTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'unlock' && <UnlockTool onHome={() => handleSelectTool(null)} />}
+        {currentTool === 'pdf-to-word' && <PdfToWordTool onHome={() => handleSelectTool(null)} />}
       </main>
 
       {/* Footer */}

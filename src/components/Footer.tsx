@@ -108,6 +108,11 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTool }) => {
             </h3>
             <ul className="space-y-2 text-sm text-slate-300">
               <li>
+                <button onClick={() => onSelectTool('pdf-to-word')} className="hover:text-brand-400 transition-colors cursor-pointer">
+                  PDF a Word (.docx)
+                </button>
+              </li>
+              <li>
                 <button onClick={() => onSelectTool('ocr')} className="hover:text-brand-400 transition-colors cursor-pointer">
                   OCR Reconocer Texto
                 </button>

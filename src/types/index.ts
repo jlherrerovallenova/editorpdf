@@ -6,6 +6,7 @@ export type ToolId =
   | 'compress'
   | 'pdf-to-img'
   | 'img-to-pdf'
+  | 'pdf-to-word'
   | 'watermark'
   | 'protect'
   | 'ocr'

@@ -77,6 +77,17 @@ export const TOOLS: ToolDef[] = [
     accentBg: 'bg-pink-50 hover:bg-pink-100/80 border-pink-200',
   },
   {
+    id: 'pdf-to-word',
+    name: 'PDF a Word',
+    shortDesc: 'Convierte tus archivos PDF en documentos Word .DOCX totalmente editables.',
+    fullDesc: 'Extrae texto, párrafos y estructura para editar en Microsoft Word o Google Docs, con soporte OCR para documentos escaneados.',
+    category: 'convert',
+    badge: 'Popular',
+    icon: 'FileText',
+    color: '#2b579a',
+    accentBg: 'bg-sky-50 hover:bg-sky-100/80 border-sky-200',
+  },
+  {
     id: 'watermark',
     name: 'Marca de Agua',
     shortDesc: 'Añade un texto de marca de agua personalizado sobre tus páginas PDF.',
