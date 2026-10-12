@@ -13,7 +13,8 @@ export type ToolId =
   | 'ocr'
   | 'page-number'
   | 'unlock'
-  | 'compare';
+  | 'compare'
+  | 'anonymize';
 
 export type ToolCategory = 'organize' | 'optimize' | 'convert' | 'edit' | 'security';
 

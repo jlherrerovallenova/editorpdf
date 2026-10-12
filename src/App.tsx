@@ -17,6 +17,7 @@ import { CompareTool } from './tools/CompareTool';
 import { UnlockTool } from './tools/UnlockTool';
 import { PdfToWordTool } from './tools/PdfToWordTool';
 import { CropTool } from './tools/CropTool';
+import { AnonymizeTool } from './tools/AnonymizeTool';
 import { useEffect } from 'react';
 import type { ToolId } from './types';
 
@@ -65,6 +66,7 @@ export function App() {
         {currentTool === 'unlock' && <UnlockTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'pdf-to-word' && <PdfToWordTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'crop' && <CropTool onHome={() => handleSelectTool(null)} />}
+        {currentTool === 'anonymize' && <AnonymizeTool onHome={() => handleSelectTool(null)} />}
       </main>
 
       {/* Footer */}

@@ -2,7 +2,7 @@ import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { pdfjsLib } from './pdfWorker';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import JSZip from 'jszip';
-import { recognize } from 'tesseract.js';
+import { createWorker } from 'tesseract.js';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, PageBreak } from 'docx';
 import type { Annotation, PageInfo } from '../types';
 
@@ -815,92 +815,422 @@ export interface OcrResult {
     pageNumber: number;
     text: string;
     confidence: number;
+    method?: 'digital' | 'ocr';
   }[];
+}
+
+export interface OcrOptions {
+  language?: string;
+  mode?: 'auto' | 'hybrid' | 'ocr';
+  enhanceContrast?: boolean;
+}
+
+/**
+ * Preprocesses a 2D canvas for OCR:
+ * - Grayscale conversion
+ * - Dynamic range histogram stretching to remove scanner gray/yellow noise
+ * - Contrast boost to make text strokes dark and background pure white
+ */
+export function preprocessCanvasForOcr(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return canvas;
+
+  try {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+    const len = data.length;
+
+    // 1. Calculate luminance histogram (0..255)
+    const histogram = new Uint32Array(256);
+    let pixelCount = 0;
+    for (let i = 0; i < len; i += 4) {
+      const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      histogram[gray]++;
+      pixelCount++;
+    }
+
+    // 2. Find 1.5% percentile (dark text) and 98% percentile (background paper)
+    const pLow = pixelCount * 0.015;
+    const pHigh = pixelCount * 0.98;
+    let count = 0;
+    let minVal = 0;
+    let maxVal = 255;
+
+    for (let i = 0; i < 256; i++) {
+      count += histogram[i];
+      if (count >= pLow && minVal === 0) {
+        minVal = i;
+      }
+      if (count >= pHigh) {
+        maxVal = i;
+        break;
+      }
+    }
+
+    if (maxVal <= minVal + 10) {
+      minVal = 0;
+      maxVal = 255;
+    }
+
+    const range = Math.max(1, maxVal - minVal);
+
+    // 3. Dynamic stretch & thresholding
+    for (let i = 0; i < len; i += 4) {
+      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      let normalized = ((gray - minVal) / range) * 255;
+      if (normalized < 0) normalized = 0;
+      if (normalized > 255) normalized = 255;
+
+      let finalVal: number;
+      if (normalized > 185) {
+        finalVal = 255; // Crisp white background
+      } else if (normalized < 105) {
+        finalVal = Math.max(0, normalized * 0.55); // Crisp deep black text
+      } else {
+        // Linear curve between 105 and 185
+        finalVal = normalized;
+      }
+
+      data[i] = finalVal;
+      data[i + 1] = finalVal;
+      data[i + 2] = finalVal;
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  } catch (err) {
+    console.warn('Canvas preprocessing warning:', err);
+  }
+
+  return canvas;
+}
+
+/**
+ * Prepares an uploaded image file (PNG/JPG/WebP) for optimal Tesseract OCR
+ */
+async function prepareImageForOcr(file: File, enhanceContrast: boolean = true): Promise<HTMLCanvasElement> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+
+  const canvas = document.createElement('canvas');
+  const maxDim = Math.max(img.width, img.height);
+  // Target 2400px for optimal OCR character height (~300 DPI)
+  const scale = maxDim < 1600 ? Math.min(3.0, 2400 / maxDim) : (maxDim > 3200 ? 3200 / maxDim : 1.0);
+
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (enhanceContrast) {
+      preprocessCanvasForOcr(canvas);
+    }
+  }
+
+  return canvas;
+}
+
+/**
+ * Clean and normalize OCR output text
+ */
+function sanitizeOcrText(rawText: string): string {
+  return rawText
+    // Fix hyphenated words at line endings (e.g. "recono- \n cimiento" -> "reconocimiento")
+    .replace(/(\w+)-\s*\n\s*(\w+)/g, '$1$2')
+    // Fix broken single character line endings
+    .replace(/[ \t]+\n/g, '\n')
+    // Remove more than 2 consecutive line breaks
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Extracts native digital text from a PDF.js page with high geometric fidelity
+ */
+export async function extractNativeTextFromPage(
+  page: any
+): Promise<{ text: string; confidence: number; hasText: boolean }> {
+  try {
+    const textContent = await page.getTextContent({
+      includeMarkedContent: false,
+      disableCombineTextItems: false,
+    });
+
+    const items = textContent.items as Array<{
+      str: string;
+      transform: number[];
+      width: number;
+      height: number;
+    }>;
+
+    const validItems = items.filter((it) => it.str && it.str.trim().length > 0);
+    const totalChars = validItems.reduce((acc, it) => acc + it.str.length, 0);
+
+    // If page has fewer than 20 characters or fewer than 4 items, treat as scanned
+    if (totalChars < 20 || validItems.length < 4) {
+      return { text: '', confidence: 0, hasText: false };
+    }
+
+    // Group items into lines based on Y coordinate
+    const lines: { y: number; items: typeof validItems }[] = [];
+    const sorted = [...validItems].sort((a, b) => b.transform[5] - a.transform[5]);
+
+    for (const item of sorted) {
+      const itemY = item.transform[5];
+      const itemHeight = Math.abs(item.transform[3]) || 12;
+      const lineTolerance = Math.max(3, itemHeight * 0.35);
+
+      const existingLine = lines.find((l) => Math.abs(l.y - itemY) <= lineTolerance);
+      if (existingLine) {
+        existingLine.items.push(item);
+      } else {
+        lines.push({ y: itemY, items: [item] });
+      }
+    }
+
+    lines.sort((a, b) => b.y - a.y);
+
+    const formattedLines: string[] = [];
+    let prevY: number | null = null;
+    const avgLineHeight = 14;
+
+    for (const line of lines) {
+      line.items.sort((a, b) => a.transform[4] - b.transform[4]);
+
+      let lineStr = '';
+      let prevRight = 0;
+
+      for (let idx = 0; idx < line.items.length; idx++) {
+        const it = line.items[idx];
+        const left = it.transform[4];
+        const width = it.width;
+
+        if (idx === 0) {
+          lineStr += it.str;
+        } else {
+          const gap = left - prevRight;
+          const fontSz = Math.abs(it.transform[0]) || 12;
+          const spaceThreshold = fontSz * 0.18;
+
+          if (gap > spaceThreshold && !lineStr.endsWith(' ') && !it.str.startsWith(' ')) {
+            lineStr += ' ';
+          }
+          lineStr += it.str;
+        }
+        prevRight = left + width;
+      }
+
+      lineStr = lineStr.trim();
+      if (!lineStr) continue;
+
+      if (prevY !== null) {
+        const yDiff = prevY - line.y;
+        if (yDiff > avgLineHeight * 1.7) {
+          formattedLines.push('');
+        }
+      }
+
+      formattedLines.push(lineStr);
+      prevY = line.y;
+    }
+
+    const text = formattedLines.join('\n').trim();
+    return {
+      text,
+      confidence: 100, // Native digital text is 100% exact
+      hasText: text.length >= 20,
+    };
+  } catch (err) {
+    console.warn('Native text extraction fallback to OCR:', err);
+    return { text: '', confidence: 0, hasText: false };
+  }
 }
 
 export async function performOcr(
   file: File,
-  language: string = 'spa',
+  optionsOrLang: string | OcrOptions = 'spa',
   onProgress?: (progressText: string, percentage: number) => void
 ): Promise<OcrResult> {
+  const options: OcrOptions =
+    typeof optionsOrLang === 'string'
+      ? { language: optionsOrLang, mode: 'hybrid', enhanceContrast: true }
+      : { language: 'spa', mode: 'hybrid', enhanceContrast: true, ...optionsOrLang };
+
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-  const pages: { pageNumber: number; text: string; confidence: number }[] = [];
+  const pages: { pageNumber: number; text: string; confidence: number; method?: 'digital' | 'ocr' }[] = [];
 
-  if (isPdf) {
-    const buffer = await file.arrayBuffer();
-    const pdfJsDoc = await getPdfJsDocument(buffer);
-    const total = pdfJsDoc.numPages;
+  let currentPage = 1;
+  let totalPages = 1;
+  let isInitializing = true;
+  let worker: any = null;
 
-    for (let i = 1; i <= total; i++) {
-      if (onProgress) {
-        onProgress(`Renderizando página ${i} de ${total}...`, Math.round(((i - 1) / total) * 100));
-      }
+  const initWorkerIfNeeded = async () => {
+    if (worker) return worker;
 
-      const page = await pdfJsDoc.getPage(i);
-      const viewport = page.getViewport({ scale: 2.0 });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) continue;
+    if (onProgress) {
+      onProgress('Inicializando motor Tesseract OCR (WebAssembly)...', 5);
+    }
 
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: ctx, viewport }).promise;
-
-      const pageBaseProgress = ((i - 1) / total) * 100;
-      const pageSlice = 100 / total;
-
-      const { data } = await recognize(canvas, language, {
-        logger: (m) => {
-          if (m.status === 'recognizing text' && onProgress) {
-            const currentTotalPct = Math.min(
-              99,
-              Math.round(pageBaseProgress + m.progress * pageSlice)
-            );
+    const lang = options.language || 'spa';
+    worker = await createWorker(lang, undefined, {
+      logger: (m) => {
+        if (!onProgress) return;
+        if (isInitializing) {
+          if (m.status === 'loading tesseract core') {
+            onProgress('Cargando núcleo Tesseract WebAssembly...', Math.round(5 + (m.progress || 0) * 10));
+          } else if (m.status === 'loading language traineddata') {
+            onProgress(`Descargando modelo lingüístico (${lang})...`, Math.round(15 + (m.progress || 0) * 15));
+          } else if (m.status === 'initializing tesseract' || m.status === 'initializing api') {
+            onProgress('Preparando motor Tesseract OCR...', Math.round(30 + (m.progress || 0) * 10));
+          }
+        } else {
+          if (m.status === 'recognizing text') {
+            const pageBase = ((currentPage - 1) / totalPages) * 100;
+            const pageSlice = 100 / totalPages;
+            const pct = Math.min(99, Math.round(pageBase + (m.progress || 0) * pageSlice));
             onProgress(
-              `Página ${i}/${total}: Reconociendo texto (${Math.round(m.progress * 100)}%)...`,
-              currentTotalPct
+              `Página ${currentPage}/${totalPages}: Reconociendo texto con Tesseract (${Math.round((m.progress || 0) * 100)}%)...`,
+              pct
             );
           }
-        },
-      });
-
-      pages.push({
-        pageNumber: i,
-        text: data.text.trim(),
-        confidence: Math.round(data.confidence),
-      });
-    }
-  } else {
-    if (onProgress) {
-      onProgress('Cargando imagen e inicializando motor OCR...', 10);
-    }
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-    const { data } = await recognize(dataUrl, language, {
-      logger: (m) => {
-        if (m.status === 'recognizing text' && onProgress) {
-          onProgress(
-            `Reconociendo caracteres (${Math.round(m.progress * 100)}%)...`,
-            Math.round(m.progress * 100)
-          );
-        } else if (onProgress) {
-          onProgress(m.status, 20);
         }
       },
     });
 
-    pages.push({
-      pageNumber: 1,
-      text: data.text.trim(),
-      confidence: Math.round(data.confidence),
-    });
+    // Configure Tesseract parameters for maximum accuracy and preservation of spaces
+    try {
+      await worker.setParameters({
+        preserve_interword_spaces: '1',
+        tessedit_pageseg_mode: '3', // PSM.AUTO (Fully automatic page segmentation)
+      });
+    } catch (e) {
+      console.warn('Could not set Tesseract worker parameters:', e);
+    }
+
+    return worker;
+  };
+
+  try {
+    if (isPdf) {
+      const buffer = await file.arrayBuffer();
+      const pdfJsDoc = await getPdfJsDocument(buffer);
+      totalPages = pdfJsDoc.numPages;
+
+      for (let i = 1; i <= totalPages; i++) {
+        currentPage = i;
+        const page = await pdfJsDoc.getPage(i);
+
+        // Check if hybrid mode is active and page has digital text
+        if (options.mode !== 'ocr') {
+          if (onProgress) {
+            onProgress(`Analizando página ${i} de ${totalPages}...`, Math.round(((i - 1) / totalPages) * 90));
+          }
+          const nativeRes = await extractNativeTextFromPage(page);
+          if (nativeRes.hasText) {
+            pages.push({
+              pageNumber: i,
+              text: nativeRes.text,
+              confidence: 100,
+              method: 'digital',
+            });
+            continue;
+          }
+        }
+
+        // If no digital text or forcing OCR: Use high-resolution preprocessed Tesseract OCR
+        await initWorkerIfNeeded();
+        isInitializing = false;
+
+        if (onProgress) {
+          onProgress(
+            `Renderizando página ${i} de ${totalPages} a alta resolución (300 DPI)...`,
+            Math.round(((i - 0.7) / totalPages) * 90)
+          );
+        }
+
+        const baseVp = page.getViewport({ scale: 1.0 });
+        // Target ~2400px on the longest dimension for optimal 300 DPI character recognition
+        const targetDim = 2400;
+        const scale = Math.min(3.8, Math.max(2.2, targetDim / Math.max(baseVp.width, baseVp.height)));
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        if (options.enhanceContrast !== false) {
+          preprocessCanvasForOcr(canvas);
+        }
+
+        if (onProgress) {
+          onProgress(
+            `Página ${i} de ${totalPages}: Ejecutando red neuronal Tesseract OCR...`,
+            Math.round(((i - 0.3) / totalPages) * 90)
+          );
+        }
+
+        const { data } = await worker.recognize(canvas);
+        const cleanText = sanitizeOcrText(data.text);
+
+        pages.push({
+          pageNumber: i,
+          text: cleanText,
+          confidence: Math.round(data.confidence),
+          method: 'ocr',
+        });
+      }
+    } else {
+      // Standalone image file (JPG, PNG, WebP)
+      totalPages = 1;
+      currentPage = 1;
+      await initWorkerIfNeeded();
+      isInitializing = false;
+
+      if (onProgress) {
+        onProgress('Optimizando imagen y mejorando contraste (300 DPI)...', 25);
+      }
+
+      const canvas = await prepareImageForOcr(file, options.enhanceContrast !== false);
+
+      if (onProgress) {
+        onProgress('Reconociendo texto con Tesseract OCR...', 50);
+      }
+
+      const { data } = await worker.recognize(canvas);
+      const cleanText = sanitizeOcrText(data.text);
+
+      pages.push({
+        pageNumber: 1,
+        text: cleanText,
+        confidence: Math.round(data.confidence),
+        method: 'ocr',
+      });
+    }
+  } finally {
+    if (worker) {
+      await worker.terminate();
+    }
   }
 
   const fullText = pages
@@ -992,6 +1322,135 @@ export async function exportOcrResultToPdf(
   return await pdfDoc.save();
 }
 
+/**
+ * 14b. EXPORT OCR TEXT TO FULLY EDITABLE WORD (.DOCX) DOCUMENT
+ */
+export async function exportOcrResultToDocx(
+  ocrResult: OcrResult,
+  options: {
+    addPageBreaks?: boolean;
+    title?: string;
+  } = {}
+): Promise<Blob> {
+  const { addPageBreaks = true, title } = options;
+  const docxParagraphs: Paragraph[] = [];
+
+  if (title) {
+    docxParagraphs.push(
+      new Paragraph({
+        text: title,
+        heading: HeadingLevel.HEADING_1,
+        spacing: { after: 200 },
+      })
+    );
+  }
+
+  const totalPages = ocrResult.pages.length;
+
+  for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+    const page = ocrResult.pages[pageIdx];
+    const pageText = page.text || '';
+
+    // If multi-page and not the first page, add PageBreak
+    if (pageIdx > 0 && addPageBreaks) {
+      docxParagraphs.push(
+        new Paragraph({
+          children: [new PageBreak()],
+        })
+      );
+    }
+
+    const rawLines = pageText.split('\n');
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i].trim();
+
+      if (!line) {
+        continue;
+      }
+
+      // Detect potential headings
+      const isShort = line.length <= 60;
+      const noEndPunct = !/[.:;,]$/.test(line);
+      const isUpper = line === line.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(line);
+      const isHeading1 = isShort && isUpper && line.length >= 4;
+      const isHeading2 = isShort && noEndPunct && !isUpper && /^[A-ZÁÉÍÓÚÑ]/.test(line);
+
+      // Detect bullet points
+      const isBullet = /^[•\-*]\s+/.test(line);
+
+      if (isHeading1) {
+        docxParagraphs.push(
+          new Paragraph({
+            text: line,
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 240, after: 120 },
+          })
+        );
+      } else if (isHeading2) {
+        docxParagraphs.push(
+          new Paragraph({
+            text: line,
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 180, after: 100 },
+          })
+        );
+      } else if (isBullet) {
+        const cleanBulletText = line.replace(/^[•\-*]\s+/, '');
+        docxParagraphs.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            children: [
+              new TextRun({
+                text: cleanBulletText,
+                size: 22,
+                font: 'Calibri',
+              }),
+            ],
+            spacing: { after: 80, line: 276 },
+          })
+        );
+      } else {
+        docxParagraphs.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: line,
+                size: 22,
+                font: 'Calibri',
+              }),
+            ],
+            spacing: { after: 120, line: 276 },
+          })
+        );
+      }
+    }
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 1440,
+              bottom: 1440,
+              left: 1440,
+              right: 1440,
+            },
+          },
+        },
+        children:
+          docxParagraphs.length > 0
+            ? docxParagraphs
+            : [new Paragraph({ text: 'Documento sin contenido de texto reconocido.' })],
+      },
+    ],
+  });
+
+  return await Packer.toBlob(doc);
+}
+
 // 15. CONVERT PDF TO WORD (.DOCX)
 export interface PdfToWordOptions {
   mode: 'auto' | 'ocr' | 'standard';
@@ -1018,46 +1477,65 @@ export async function convertPdfToWord(
   let totalWordCount = 0;
   let totalParagraphCount = 0;
 
-  for (let pageNum = 1; pageNum <= total; pageNum++) {
-    if (onProgress) {
-      const pct = Math.round(((pageNum - 1) / total) * 90);
-      onProgress(`Procesando página ${pageNum} de ${total}...`, pct);
-    }
+  let ocrWorker: any = null;
 
-    const page = await pdfJsDoc.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    const items = textContent.items as Array<{
-      str: string;
-      transform: number[];
-      width: number;
-      height: number;
-      fontName?: string;
-    }>;
-
-    const hasEnoughText = items.filter((it) => it.str.trim().length > 0).length >= 5;
-    const shouldUseOcr = options.mode === 'ocr' || (options.mode === 'auto' && !hasEnoughText);
-
-    if (shouldUseOcr) {
+  try {
+    for (let pageNum = 1; pageNum <= total; pageNum++) {
       if (onProgress) {
-        onProgress(
-          `Página ${pageNum} de ${total}: Aplicando OCR para texto escaneado...`,
-          Math.round(((pageNum - 0.5) / total) * 90)
-        );
+        const pct = Math.round(((pageNum - 1) / total) * 90);
+        onProgress(`Procesando página ${pageNum} de ${total}...`, pct);
       }
-      const viewport = page.getViewport({ scale: 2.0 });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d');
 
-      if (ctx) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({ canvasContext: ctx, viewport }).promise;
+      const page = await pdfJsDoc.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const items = textContent.items as Array<{
+        str: string;
+        transform: number[];
+        width: number;
+        height: number;
+        fontName?: string;
+      }>;
 
-        const lang = options.language || 'spa';
-        const { data } = await recognize(canvas, lang);
-        const lines = data.text.split('\n').map((l) => l.trim()).filter(Boolean);
+      const hasEnoughText = items.filter((it) => it.str.trim().length > 0).length >= 5;
+      const shouldUseOcr = options.mode === 'ocr' || (options.mode === 'auto' && !hasEnoughText);
+
+      if (shouldUseOcr) {
+        if (onProgress) {
+          onProgress(
+            `Página ${pageNum} de ${total}: Aplicando Tesseract OCR a alta resolución (300 DPI)...`,
+            Math.round(((pageNum - 0.5) / total) * 90)
+          );
+        }
+        const baseVp = page.getViewport({ scale: 1.0 });
+        const scale = Math.min(3.8, Math.max(2.2, 2400 / Math.max(baseVp.width, baseVp.height)));
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+
+        if (ctx) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          preprocessCanvasForOcr(canvas);
+
+          if (!ocrWorker) {
+            const lang = options.language || 'spa';
+            ocrWorker = await createWorker(lang);
+            try {
+              await ocrWorker.setParameters({
+                preserve_interword_spaces: '1',
+                tessedit_pageseg_mode: '3',
+              });
+            } catch (e) {
+              console.warn(e);
+            }
+          }
+
+          const { data } = await ocrWorker.recognize(canvas);
+          const cleanText = sanitizeOcrText(data.text);
+          const lines = cleanText.split('\n').map((l: string) => l.trim()).filter(Boolean);
 
         for (const line of lines) {
           const words = line.split(/\s+/).filter(Boolean);
@@ -1154,6 +1632,11 @@ export async function convertPdfToWord(
           children: [new PageBreak()],
         })
       );
+    }
+    }
+  } finally {
+    if (ocrWorker) {
+      await ocrWorker.terminate();
     }
   }
 
@@ -1378,3 +1861,320 @@ export async function cropPdf(
     croppedPagesCount,
   };
 }
+
+// 17. ANONYMIZE / REDACT PDF (PII SANITIZATION)
+export interface RedactionItem {
+  id: string;
+  pageIndex: number; // 0-indexed
+  x: number; // percentage 0 to 100 (from left)
+  y: number; // percentage 0 to 100 (from top)
+  width: number; // percentage 0 to 100
+  height: number; // percentage 0 to 100
+  category: 'dni' | 'email' | 'phone' | 'iban' | 'date' | 'custom' | 'manual';
+  text: string;
+  enabled: boolean;
+}
+
+export interface AnonymizeOptions {
+  style: 'black' | 'white' | 'text';
+  textLabel?: string;
+  removeMetadata: boolean;
+  flattenPdf: boolean;
+}
+
+/**
+ * Automatically scans a PDF document for sensitive personal data (DNI/NIE/CIF, emails, phones, IBANs, dates, custom keywords)
+ */
+export async function scanPdfForSensitiveData(
+  pdfData: ArrayBuffer,
+  customKeywords: string[] = [],
+  onProgress?: (progressText: string, percentage: number) => void
+): Promise<RedactionItem[]> {
+  const pdfJsDoc = await getPdfJsDocument(pdfData);
+  const total = pdfJsDoc.numPages;
+  const redactions: RedactionItem[] = [];
+
+  const PATTERNS: { category: RedactionItem['category']; regex: RegExp; label: string }[] = [
+    // Spanish DNI/NIE/CIF
+    { category: 'dni', regex: /\b\d{8}[- ]?[A-HJ-NP-TV-Z]\b/gi, label: 'DNI' },
+    { category: 'dni', regex: /\b[XYZxyz]\d{7}[- ]?[A-HJ-NP-TV-Z]\b/gi, label: 'NIE' },
+    { category: 'dni', regex: /\b[ABCDEFGHJNPQRSUVWabcdefghjnpqrsuvw]\d{7}[0-9A-Za-z]\b/g, label: 'CIF' },
+    // Email
+    { category: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: 'Email' },
+    // Phone numbers (Spanish & international)
+    { category: 'phone', regex: /\b(?:\+?34[- ]?)?[6789]\d{2}[- ]?\d{3}[- ]?\d{3}\b/g, label: 'Teléfono' },
+    { category: 'phone', regex: /\b(?:\+?34[- ]?)?[6789]\d{1}[- ]?\d{2}[- ]?\d{2}[- ]?\d{2}\b/g, label: 'Teléfono' },
+    // IBAN & Credit Cards
+    { category: 'iban', regex: /\b[A-Z]{2}\d{2}[- ]?(?:\d{4}[- ]?){3,6}\b/g, label: 'IBAN' },
+    { category: 'iban', regex: /\b(?:\d{4}[- ]?){3}\d{4}\b/g, label: 'Tarjeta' },
+    // Dates
+    { category: 'date', regex: /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g, label: 'Fecha' },
+  ];
+
+  for (let pageNum = 1; pageNum <= total; pageNum++) {
+    if (onProgress) {
+      onProgress(`Analizando datos sensibles en página ${pageNum} de ${total}...`, Math.round((pageNum / total) * 100));
+    }
+
+    const page = await pdfJsDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1.0 });
+    const pWidth = viewport.width;
+    const pHeight = viewport.height;
+    const textContent = await page.getTextContent();
+    const items = textContent.items as Array<{
+      str: string;
+      transform: number[];
+      width: number;
+      height: number;
+    }>;
+
+    const validItems = items.filter((it) => it.str && it.str.trim().length > 0);
+
+    for (const it of validItems) {
+      const itX = it.transform[4];
+      const itY = it.transform[5];
+      const itW = it.width;
+      const itH = Math.max(10, Math.abs(it.transform[3]) || Math.abs(it.transform[0]) || 12);
+
+      // Check standard regex patterns
+      for (const p of PATTERNS) {
+        p.regex.lastIndex = 0;
+        let match;
+        while ((match = p.regex.exec(it.str)) !== null) {
+          const matchStr = match[0];
+          const matchStart = match.index;
+          const matchLen = matchStr.length;
+
+          const charWidth = itW / Math.max(1, it.str.length);
+          const subX = itX + matchStart * charWidth;
+          const subW = Math.max(10, matchLen * charWidth);
+
+          const leftPct = Math.max(0, ((subX - 2) / pWidth) * 100);
+          const topPct = Math.max(0, ((pHeight - itY - itH * 0.95 - 2) / pHeight) * 100);
+          const widthPct = Math.min(100, ((subW + 4) / pWidth) * 100);
+          const heightPct = Math.min(100, ((itH * 1.25 + 4) / pHeight) * 100);
+
+          redactions.push({
+            id: `redact-${pageNum}-${redactions.length}-${Math.random().toString(36).substring(2, 7)}`,
+            pageIndex: pageNum - 1,
+            x: Math.round(leftPct * 100) / 100,
+            y: Math.round(topPct * 100) / 100,
+            width: Math.round(widthPct * 100) / 100,
+            height: Math.round(heightPct * 100) / 100,
+            category: p.category,
+            text: matchStr,
+            enabled: true,
+          });
+        }
+      }
+
+      // Check custom user keywords
+      for (const kw of customKeywords) {
+        if (!kw || !kw.trim()) continue;
+        const cleanKw = kw.trim();
+        const kwRegex = new RegExp(cleanKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        let match;
+        while ((match = kwRegex.exec(it.str)) !== null) {
+          const matchStr = match[0];
+          const matchStart = match.index;
+          const matchLen = matchStr.length;
+
+          const charWidth = itW / Math.max(1, it.str.length);
+          const subX = itX + matchStart * charWidth;
+          const subW = Math.max(10, matchLen * charWidth);
+
+          const leftPct = Math.max(0, ((subX - 2) / pWidth) * 100);
+          const topPct = Math.max(0, ((pHeight - itY - itH * 0.95 - 2) / pHeight) * 100);
+          const widthPct = Math.min(100, ((subW + 4) / pWidth) * 100);
+          const heightPct = Math.min(100, ((itH * 1.25 + 4) / pHeight) * 100);
+
+          redactions.push({
+            id: `redact-${pageNum}-${redactions.length}-${Math.random().toString(36).substring(2, 7)}`,
+            pageIndex: pageNum - 1,
+            x: Math.round(leftPct * 100) / 100,
+            y: Math.round(topPct * 100) / 100,
+            width: Math.round(widthPct * 100) / 100,
+            height: Math.round(heightPct * 100) / 100,
+            category: 'custom',
+            text: matchStr,
+            enabled: true,
+          });
+        }
+      }
+    }
+  }
+
+  return redactions;
+}
+
+/**
+ * Applies permanent anonymization/redactions and metadata sanitization to PDF
+ */
+export async function applyAnonymizationToPdf(
+  pdfData: ArrayBuffer,
+  redactions: RedactionItem[],
+  options: AnonymizeOptions = { style: 'black', textLabel: '[CENSURADO]', removeMetadata: true, flattenPdf: true },
+  onProgress?: (progressText: string, percentage: number) => void
+): Promise<Uint8Array> {
+  const activeRedactions = redactions.filter((r) => r.enabled);
+
+  if (options.flattenPdf) {
+    // 1. Permanent Image Flattening: physically obliterates pixels beneath redactions
+    const pdfJsDoc = await getPdfJsDocument(pdfData);
+    const total = pdfJsDoc.numPages;
+    const newPdfDoc = await PDFDocument.create();
+
+    for (let pageNum = 1; pageNum <= total; pageNum++) {
+      if (onProgress) {
+        onProgress(`Anonimizando y aplanando página ${pageNum} de ${total}...`, Math.round((pageNum / total) * 90));
+      }
+
+      const page = await pdfJsDoc.getPage(pageNum);
+      const baseVp = page.getViewport({ scale: 1.0 });
+      // Crisp 2.0 - 2.5 scale for sharp typography & print quality
+      const scale = Math.min(2.8, Math.max(2.0, 2000 / Math.max(baseVp.width, baseVp.height)));
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      // Draw active redactions on this page directly onto canvas
+      const pageRedactions = activeRedactions.filter((r) => r.pageIndex === pageNum - 1);
+      for (const r of pageRedactions) {
+        const px = (r.x / 100) * canvas.width;
+        const py = (r.y / 100) * canvas.height;
+        const pw = (r.width / 100) * canvas.width;
+        const ph = (r.height / 100) * canvas.height;
+
+        if (options.style === 'white') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(px, py, pw, ph);
+        } else if (options.style === 'text') {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(px, py, pw, ph);
+          ctx.fillStyle = '#ffffff';
+          const fontSize = Math.max(10, Math.round(ph * 0.65));
+          ctx.font = `bold ${fontSize}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(options.textLabel || '[CENSURADO]', px + pw / 2, py + ph / 2);
+        } else {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(px, py, pw, ph);
+        }
+      }
+
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      if (!blob) continue;
+      const imgBuffer = await blob.arrayBuffer();
+      const embeddedImg = await newPdfDoc.embedJpg(imgBuffer);
+
+      const newPage = newPdfDoc.addPage([baseVp.width, baseVp.height]);
+      newPage.drawImage(embeddedImg, {
+        x: 0,
+        y: 0,
+        width: baseVp.width,
+        height: baseVp.height,
+      });
+    }
+
+    if (options.removeMetadata) {
+      newPdfDoc.setTitle('');
+      newPdfDoc.setAuthor('');
+      newPdfDoc.setSubject('');
+      newPdfDoc.setKeywords([]);
+      newPdfDoc.setProducer('PDFMaster Anonymizer');
+      newPdfDoc.setCreator('PDFMaster');
+      newPdfDoc.setCreationDate(new Date(0));
+      newPdfDoc.setModificationDate(new Date(0));
+    }
+
+    if (onProgress) {
+      onProgress('Empaquetando documento protegido...', 98);
+    }
+
+    return await newPdfDoc.save();
+  } else {
+    // 2. Vector Redaction
+    const pdfDoc = await PDFDocument.load(pdfData, { ignoreEncryption: true });
+    const pages = pdfDoc.getPages();
+    let fontBold: any = null;
+    if (options.style === 'text') {
+      fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    }
+
+    for (const r of activeRedactions) {
+      if (r.pageIndex < 0 || r.pageIndex >= pages.length) continue;
+      const page = pages[r.pageIndex];
+      const { width: pWidth, height: pHeight } = page.getSize();
+
+      const pdfX = (r.x / 100) * pWidth;
+      const pdfY = pHeight - (r.y / 100) * pHeight;
+      const pdfW = (r.width / 100) * pWidth;
+      const pdfH = (r.height / 100) * pHeight;
+
+      if (options.style === 'white') {
+        page.drawRectangle({
+          x: pdfX,
+          y: pdfY - pdfH,
+          width: pdfW,
+          height: pdfH,
+          color: rgb(1, 1, 1),
+        });
+      } else if (options.style === 'text' && fontBold) {
+        page.drawRectangle({
+          x: pdfX,
+          y: pdfY - pdfH,
+          width: pdfW,
+          height: pdfH,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+        const label = options.textLabel || '[CENSURADO]';
+        const fontSize = Math.max(7, Math.min(11, pdfH * 0.65));
+        const textWidth = fontBold.widthOfTextAtSize(label, fontSize);
+        const textX = Math.max(pdfX + 2, pdfX + (pdfW - textWidth) / 2);
+        const textY = pdfY - pdfH + (pdfH - fontSize) / 2 + 1;
+        page.drawText(label, {
+          x: textX,
+          y: textY,
+          size: fontSize,
+          font: fontBold,
+          color: rgb(1, 1, 1),
+        });
+      } else {
+        page.drawRectangle({
+          x: pdfX,
+          y: pdfY - pdfH,
+          width: pdfW,
+          height: pdfH,
+          color: rgb(0, 0, 0),
+        });
+      }
+    }
+
+    if (options.removeMetadata) {
+      pdfDoc.setTitle('');
+      pdfDoc.setAuthor('');
+      pdfDoc.setSubject('');
+      pdfDoc.setKeywords([]);
+      pdfDoc.setProducer('PDFMaster Anonymizer');
+      pdfDoc.setCreator('PDFMaster');
+      pdfDoc.setCreationDate(new Date(0));
+      pdfDoc.setModificationDate(new Date(0));
+    }
+
+    if (onProgress) {
+      onProgress('Empaquetando documento protegido...', 98);
+    }
+
+    return await pdfDoc.save();
+  }
+}
+

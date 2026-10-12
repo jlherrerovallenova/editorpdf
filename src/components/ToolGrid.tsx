@@ -22,6 +22,7 @@ import {
   X,
   FileText,
   Crop,
+  EyeOff,
 } from 'lucide-react';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { TOOLS } from '../data/tools';
@@ -47,6 +48,7 @@ const iconMap: Record<string, React.FC<{ className?: string }>> = {
   Unlock,
   FileText,
   Crop,
+  EyeOff,
 };
 
 export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool }) => {

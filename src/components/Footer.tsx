@@ -142,6 +142,11 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTool }) => {
                   Desbloquear PDF
                 </button>
               </li>
+              <li>
+                <button onClick={() => onSelectTool('anonymize')} className="hover:text-brand-400 transition-colors cursor-pointer">
+                  Anonimizar PDF
+                </button>
+              </li>
             </ul>
           </div>
 
