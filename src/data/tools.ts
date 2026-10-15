@@ -123,10 +123,10 @@ export const TOOLS: ToolDef[] = [
   {
     id: 'ocr',
     name: 'OCR Reconocer Texto',
-    shortDesc: 'Extrae texto editable de PDFs escaneados o imágenes con inteligencia óptica.',
-    fullDesc: 'Convierte documentos no seleccionables y fotos en texto limpio para copiar o descargar en archivo TXT.',
+    shortDesc: 'Extrae texto editable de PDFs e imágenes con el motor de código abierto Tesseract OCR.',
+    fullDesc: 'Reconocimiento óptico con tecnología Tesseract OCR (redes neuronales LSTM en WebAssembly). Procesa documentos localmente con total privacidad.',
     category: 'convert',
-    badge: 'IA',
+    badge: 'Tesseract OCR',
     icon: 'ScanText',
     color: '#14b8a6',
     accentBg: 'bg-teal-50 hover:bg-teal-100/80 border-teal-200',

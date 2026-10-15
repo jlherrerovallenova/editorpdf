@@ -1,31 +1,31 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   EyeOff,
-  Search,
   ShieldCheck,
-  Lock,
-  Trash2,
-  Loader2,
   AlertCircle,
+  Trash2,
+  Plus,
+  Loader2,
   ChevronLeft,
   ChevronRight,
-  ZoomIn,
-  ZoomOut,
-  Sparkles,
   Info,
-  X,
-  FileText,
+  Sliders,
+  Sparkles,
+  MousePointer,
+  FileCheck,
+  Check,
 } from 'lucide-react';
 import { Dropzone } from '../components/Dropzone';
 import { SuccessView } from '../components/SuccessView';
 import {
   getPdfJsDocument,
-  detectSensitiveDataInPdf,
-  anonymizePdf,
+  scanPdfForSensitiveData,
+  applyAnonymizationToPdf,
   downloadBlob,
   formatFileSize,
+  type RedactionItem,
+  type AnonymizeOptions,
 } from '../utils/pdfUtils';
-import type { RedactionBox, AnonymizeOptions } from '../types';
 
 interface AnonymizeToolProps {
   onHome: () => void;
@@ -33,89 +33,153 @@ interface AnonymizeToolProps {
 
 export const AnonymizeTool: React.FC<AnonymizeToolProps> = ({ onHome }) => {
   const [file, setFile] = useState<File | null>(null);
-  const [fileBuffer, setFileBuffer] = useState<ArrayBuffer | null>(null);
-  const [totalPages, setTotalPages] = useState<number>(1);
+  const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
+  const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [zoom, setZoom] = useState<number>(1.0);
-
-  // Redaction boxes state
-  const [boxes, setBoxes] = useState<RedactionBox[]>([]);
-  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
-
-  // Detection configuration
-  const [detectDni, setDetectDni] = useState<boolean>(true);
-  const [detectEmail, setDetectEmail] = useState<boolean>(true);
-  const [detectPhone, setDetectPhone] = useState<boolean>(true);
-  const [detectIban, setDetectIban] = useState<boolean>(true);
-  const [customKeywords, setCustomKeywords] = useState<string>('');
-
-  // Security options
-  const [boxStyle, setBoxStyle] = useState<'black' | 'white' | 'redacted-text'>('black');
-  const [removeMetadata, setRemoveMetadata] = useState<boolean>(true);
-  const [flattenPages, setFlattenPages] = useState<boolean>(true);
-
-  // UI state
-  const [activeTab, setActiveTab] = useState<'detect' | 'options' | 'list'>('detect');
   const [isScanning, setIsScanning] = useState<boolean>(false);
-  const [scanMessage, setScanMessage] = useState<string>('');
-  const [scanProgress, setScanProgress] = useState<number>(0);
-
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [processMessage, setProcessMessage] = useState<string>('');
-  const [processProgress, setProcessProgress] = useState<number>(0);
+  const [progressText, setProgressText] = useState<string>('');
+  const [progressPct, setProgressPct] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Redactions & Search terms
+  const [redactions, setRedactions] = useState<RedactionItem[]>([]);
+  const [customKeywords, setCustomKeywords] = useState<string[]>([]);
+  const [newKeywordInput, setNewKeywordInput] = useState<string>('');
+
+  // Redaction Options
+  const [redactionStyle, setRedactionStyle] = useState<AnonymizeOptions['style']>('black');
+  const [removeMetadata, setRemoveMetadata] = useState<boolean>(true);
+  const [flattenPdf, setFlattenPdf] = useState<boolean>(true);
+
   // Result state
-  const [resultData, setResultData] = useState<Uint8Array | null>(null);
-  const [resultStats, setResultStats] = useState<{
-    originalSize: number;
-    newSize: number;
-    redactedCount: number;
-    pagesAffected: number;
-  } | null>(null);
+  const [resultPdfBytes, setResultPdfBytes] = useState<Uint8Array | null>(null);
 
-  // Canvas & dragging references
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Canvas & manual selection refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isDraggingRef = useRef(false);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingRef = useRef<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const [liveRect, setLiveRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [dragBox, setDragBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
-  // Load PDF file
+  // Load PDF file and trigger initial automatic scan
   const handleFileSelected = async (files: File[]) => {
     if (files.length === 0) return;
-    const selected = files[0];
-    setFile(selected);
+    const f = files[0];
+    setFile(f);
     setErrorMsg(null);
-    setResultData(null);
-    setResultStats(null);
-    setBoxes([]);
-    setCurrentPage(1);
+    setResultPdfBytes(null);
+    setIsScanning(true);
+    setProgressPct(10);
+    setProgressText('Cargando documento PDF...');
 
     try {
-      const buffer = await selected.arrayBuffer();
-      setFileBuffer(buffer);
+      const buffer = await f.arrayBuffer();
+      setArrayBuffer(buffer);
+
       const pdfJsDoc = await getPdfJsDocument(buffer);
       setTotalPages(pdfJsDoc.numPages);
+      setCurrentPage(1);
+
+      setProgressText('Escaneando documento en busca de datos sensibles (DNI, emails, teléfonos, IBAN)...');
+      const detected = await scanPdfForSensitiveData(buffer, customKeywords, (text, pct) => {
+        setProgressText(text);
+        setProgressPct(pct);
+      });
+
+      setRedactions(detected);
     } catch (err: any) {
       console.error(err);
-      setErrorMsg('No se pudo cargar el archivo PDF.');
+      setErrorMsg('No se pudo procesar el archivo PDF. Asegúrate de que no esté protegido con contraseña.');
+    } finally {
+      setIsScanning(false);
     }
   };
 
-  // Render current page to canvas
+  // Re-scan when custom keywords change
+  const handleAddCustomKeyword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const term = newKeywordInput.trim();
+    if (!term || customKeywords.includes(term) || !arrayBuffer) return;
+
+    const updatedKeywords = [...customKeywords, term];
+    setCustomKeywords(updatedKeywords);
+    setNewKeywordInput('');
+
+    setIsScanning(true);
+    setProgressText(`Buscando coincidencias de "${term}"...`);
+    try {
+      const detected = await scanPdfForSensitiveData(arrayBuffer, updatedKeywords);
+      // Merge keeping manual redactions and enabled states
+      const manualRedactions = redactions.filter((r) => r.category === 'manual');
+      const existingEnabledMap = new Map(redactions.map((r) => [r.id, r.enabled]));
+
+      const merged = [
+        ...manualRedactions,
+        ...detected.map((r) => ({
+          ...r,
+          enabled: existingEnabledMap.has(r.id) ? (existingEnabledMap.get(r.id) as boolean) : true,
+        })),
+      ];
+      setRedactions(merged);
+    } catch (err) {
+      console.warn(err);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleRemoveCustomKeyword = async (term: string) => {
+    const updated = customKeywords.filter((k) => k !== term);
+    setCustomKeywords(updated);
+
+    if (!arrayBuffer) return;
+    setIsScanning(true);
+    try {
+      const detected = await scanPdfForSensitiveData(arrayBuffer, updated);
+      const manualRedactions = redactions.filter((r) => r.category === 'manual');
+      setRedactions([...manualRedactions, ...detected]);
+    } catch (err) {
+      console.warn(err);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // Toggle category enabled state
+  const handleToggleCategory = (category: RedactionItem['category']) => {
+    const categoryItems = redactions.filter((r) => r.category === category);
+    const areAllEnabled = categoryItems.every((r) => r.enabled);
+
+    setRedactions((prev) =>
+      prev.map((r) => (r.category === category ? { ...r, enabled: !areAllEnabled } : r))
+    );
+  };
+
+  // Toggle single redaction
+  const handleToggleRedaction = (id: string) => {
+    setRedactions((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
+    );
+  };
+
+  // Delete single redaction
+  const handleDeleteRedaction = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRedactions((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  // Render current page on canvas
   const renderCurrentPage = useCallback(async () => {
-    if (!fileBuffer || !canvasRef.current) return;
-    const canvas = canvasRef.current;
+    if (!arrayBuffer || !canvasRef.current) return;
 
     try {
-      const pdfJsDoc = await getPdfJsDocument(fileBuffer);
+      const pdfJsDoc = await getPdfJsDocument(arrayBuffer);
       const page = await pdfJsDoc.getPage(currentPage);
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-      // Render at sharp 1.5 scale multiplied by user zoom
-      const renderScale = 1.5 * zoom;
-      const viewport = page.getViewport({ scale: renderScale });
-
+      const viewport = page.getViewport({ scale: 1.5 });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
@@ -124,244 +188,140 @@ export const AnonymizeTool: React.FC<AnonymizeToolProps> = ({ onHome }) => {
 
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      await page.render({
-        canvasContext: ctx,
-        viewport,
-      }).promise;
+      await page.render({ canvasContext: ctx, viewport }).promise;
     } catch (err) {
-      console.error('Error al renderizar página:', err);
+      console.error('Error rendering page:', err);
     }
-  }, [fileBuffer, currentPage, zoom]);
+  }, [arrayBuffer, currentPage]);
 
   useEffect(() => {
     renderCurrentPage();
   }, [renderCurrentPage]);
 
-  // Run automatic scanner for sensitive data
-  const handleRunScanner = async () => {
-    if (!fileBuffer) return;
-    setIsScanning(true);
-    setScanProgress(0);
-    setScanMessage('Iniciando análisis de patrones sensibles...');
-    setErrorMsg(null);
-
-    try {
-      const keywords = customKeywords
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean);
-
-      const detected = await detectSensitiveDataInPdf(
-        fileBuffer,
-        {
-          dni: detectDni,
-          email: detectEmail,
-          phone: detectPhone,
-          iban: detectIban,
-          customKeywords: keywords,
-        },
-        (msg, pct) => {
-          setScanMessage(msg);
-          setScanProgress(pct);
-        }
-      );
-
-      // Apply current default boxStyle to detected items
-      const styledDetected = detected.map((b) => ({
-        ...b,
-        style: boxStyle,
-      }));
-
-      // Combine with existing manual boxes without duplicates
-      setBoxes((prev) => {
-        const manualOnly = prev.filter((b) => b.type === 'manual');
-        return [...manualOnly, ...styledDetected];
-      });
-
-      setActiveTab('list');
-    } catch (err: any) {
-      console.error('Error al escanear datos sensibles:', err);
-      setErrorMsg('Error durante el análisis del documento: ' + (err.message || ''));
-    } finally {
-      setIsScanning(false);
-      setScanMessage('');
-    }
-  };
-
-  // Dragging handlers for manual redaction drawing
-  const getRelativeCoords = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-
-    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
-    return { x, y };
-  };
-
-  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
-    // Avoid starting a new box if clicking on an existing box delete button
-    if ((e.target as HTMLElement).closest('.box-interactive-action')) return;
+  // Mouse drag handlers for manual redaction drawing
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
 
     isDraggingRef.current = true;
-    const coords = getRelativeCoords(e);
-    dragStartRef.current = coords;
-    setLiveRect({ x: coords.x, y: coords.y, width: 0, height: 0 });
-    setSelectedBoxId(null);
+    dragStartRef.current = { x: xPct, y: yPct };
+    setDragBox({ x: xPct, y: yPct, width: 0, height: 0 });
   };
 
-  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDraggingRef.current || !dragStartRef.current) return;
-    const current = getRelativeCoords(e);
-    const start = dragStartRef.current;
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || !dragStartRef.current || !overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const currentX = ((e.clientX - rect.left) / rect.width) * 100;
+    const currentY = ((e.clientY - rect.top) / rect.height) * 100;
 
-    const minX = Math.min(start.x, current.x);
-    const minY = Math.min(start.y, current.y);
-    const width = Math.abs(current.x - start.x);
-    const height = Math.abs(current.y - start.y);
+    const startX = dragStartRef.current.x;
+    const startY = dragStartRef.current.y;
 
-    setLiveRect({
-      x: Math.round(minX * 10) / 10,
-      y: Math.round(minY * 10) / 10,
-      width: Math.round(width * 10) / 10,
-      height: Math.round(height * 10) / 10,
-    });
+    const boxX = Math.min(startX, currentX);
+    const boxY = Math.min(startY, currentY);
+    const boxW = Math.abs(currentX - startX);
+    const boxH = Math.abs(currentY - startY);
+
+    setDragBox({ x: boxX, y: boxY, width: boxW, height: boxH });
   };
 
-  const handlePointerUp = () => {
-    if (!isDraggingRef.current || !liveRect) {
-      isDraggingRef.current = false;
-      dragStartRef.current = null;
-      setLiveRect(null);
-      return;
-    }
-
+  const handleMouseUp = () => {
+    if (!isDraggingRef.current || !dragBox) return;
     isDraggingRef.current = false;
     dragStartRef.current = null;
 
-    // Only create box if large enough (at least 1% wide and tall)
-    if (liveRect.width > 0.8 && liveRect.height > 0.8) {
-      const newBox: RedactionBox = {
-        id: 'box_' + Math.random().toString(36).substring(2, 9),
+    // Only add if box has a minimum size (e.g. > 1% width and height)
+    if (dragBox.width > 1.2 && dragBox.height > 1.0) {
+      const newManualItem: RedactionItem = {
+        id: `manual-${currentPage}-${Date.now()}`,
         pageIndex: currentPage - 1,
-        x: liveRect.x,
-        y: liveRect.y,
-        width: liveRect.width,
-        height: liveRect.height,
-        type: 'manual',
-        label: 'Área manual',
-        style: boxStyle,
+        x: Math.round(dragBox.x * 100) / 100,
+        y: Math.round(dragBox.y * 100) / 100,
+        width: Math.round(dragBox.width * 100) / 100,
+        height: Math.round(dragBox.height * 100) / 100,
+        category: 'manual',
+        text: 'Área censurada manualmente',
+        enabled: true,
       };
-
-      setBoxes((prev) => [...prev, newBox]);
-      setSelectedBoxId(newBox.id);
+      setRedactions((prev) => [...prev, newManualItem]);
     }
 
-    setLiveRect(null);
+    setDragBox(null);
   };
 
-  // Remove a box
-  const handleDeleteBox = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setBoxes((prev) => prev.filter((b) => b.id !== id));
-    if (selectedBoxId === id) setSelectedBoxId(null);
-  };
-
-  // Remove all boxes on current page
-  const handleClearCurrentPageBoxes = () => {
-    setBoxes((prev) => prev.filter((b) => b.pageIndex !== currentPage - 1));
-  };
-
-  // Remove all boxes in the entire document
-  const handleClearAllBoxes = () => {
-    setBoxes([]);
-  };
-
-  // Execute anonymization
-  const handleAnonymize = async () => {
-    if (!file || !fileBuffer) return;
-
-    if (boxes.length === 0 && !removeMetadata) {
-      setErrorMsg('No has marcado ninguna área para censurar ni has activado la eliminación de metadatos.');
-      return;
-    }
+  // Perform Final Anonymization
+  const handleApplyAnonymization = async () => {
+    if (!arrayBuffer || !file) return;
 
     setIsProcessing(true);
     setErrorMsg(null);
-    setProcessProgress(0);
-    setProcessMessage('Iniciando proceso de anonimización segura...');
+    setProgressPct(5);
+    setProgressText('Iniciando proceso de anonimización...');
 
     try {
       const options: AnonymizeOptions = {
-        boxes,
+        style: redactionStyle,
+        textLabel: '[CENSURADO]',
         removeMetadata,
-        flattenPages,
-        defaultBoxColor: boxStyle,
+        flattenPdf,
       };
 
-      const res = await anonymizePdf(fileBuffer, options, (msg, pct) => {
-        setProcessMessage(msg);
-        setProcessProgress(pct);
+      const result = await applyAnonymizationToPdf(arrayBuffer, redactions, options, (text, pct) => {
+        setProgressText(text);
+        setProgressPct(pct);
       });
 
-      setResultData(res.data);
-      setResultStats({
-        originalSize: file.size,
-        newSize: res.data.byteLength,
-        redactedCount: res.redactedCount,
-        pagesAffected: res.pagesAffected,
-      });
+      setResultPdfBytes(result);
     } catch (err: any) {
-      console.error('Error al anonimizar:', err);
-      setErrorMsg('No se pudo anonimizar el documento: ' + (err.message || ''));
+      console.error(err);
+      setErrorMsg(err?.message || 'Error al aplicar la anonimización.');
     } finally {
       setIsProcessing(false);
-      setProcessMessage('');
     }
   };
 
   const handleDownload = () => {
-    if (!resultData || !file) return;
+    if (!resultPdfBytes || !file) return;
     const baseName = file.name.replace(/\.[^/.]+$/, '');
-    downloadBlob(resultData, `${baseName}_anonimizado.pdf`);
+    downloadBlob(resultPdfBytes, `${baseName}_anonimizado.pdf`);
   };
 
   const handleReset = () => {
     setFile(null);
-    setFileBuffer(null);
-    setBoxes([]);
-    setResultData(null);
-    setResultStats(null);
-    setErrorMsg(null);
+    setArrayBuffer(null);
+    setTotalPages(0);
     setCurrentPage(1);
+    setRedactions([]);
+    setCustomKeywords([]);
+    setResultPdfBytes(null);
+    setErrorMsg(null);
+    setProgressPct(0);
+    setProgressText('');
   };
 
-  // Current page boxes
-  const currentPageBoxes = boxes.filter((b) => b.pageIndex === currentPage - 1);
+  // Redactions counts by category
+  const currentPageRedactions = redactions.filter((r) => r.pageIndex === currentPage - 1);
+  const activeCount = redactions.filter((r) => r.enabled).length;
 
-  if (resultData && resultStats) {
+  const countCategory = (cat: RedactionItem['category']) =>
+    redactions.filter((r) => r.category === cat).length;
+  const countCategoryEnabled = (cat: RedactionItem['category']) =>
+    redactions.filter((r) => r.category === cat && r.enabled).length;
+
+  if (resultPdfBytes) {
     return (
       <SuccessView
-        title="¡Documento anonimizado con éxito!"
-        subtitle={
-          resultStats.redactedCount > 0
-            ? `Se han censurado permanentemente ${resultStats.redactedCount} datos sensibles en ${resultStats.pagesAffected} página(s) y eliminado todos los metadatos identificativos.`
-            : 'Se han eliminado con éxito todos los metadatos confidenciales e información oculta del archivo.'
-        }
+        title="¡Tu documento ha sido anonimizado con éxito!"
+        subtitle={`Se han censurado de forma irreversible ${activeCount} elementos sensibles y se han limpiado todos los metadatos privados del archivo.`}
         onDownload={handleDownload}
         onReset={handleReset}
         onHome={onHome}
         downloadLabel="Descargar PDF Anonimizado"
         stats={{
-          originalSize: resultStats.originalSize,
-          newSize: resultStats.newSize,
-          savedPercentage:
-            resultStats.originalSize > resultStats.newSize
-              ? Math.round(((resultStats.originalSize - resultStats.newSize) / resultStats.originalSize) * 100)
-              : undefined,
+          pageCount: totalPages,
+          newSize: resultPdfBytes.byteLength,
         }}
       />
     );
@@ -369,618 +329,559 @@ export const AnonymizeTool: React.FC<AnonymizeToolProps> = ({ onHome }) => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Tool Header */}
+      {/* Title Header */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-teal-100 text-teal-600 mb-3 shadow-inner">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 mb-3 shadow-inner">
           <EyeOff className="w-7 h-7" />
         </div>
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          Anonimizar & Redactar PDF
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+          Anonimizar PDF
         </h1>
-        <p className="text-slate-500 mt-2 max-w-xl mx-auto text-sm sm:text-base">
-          Censura datos personales, oculta información confidencial y limpia los metadatos para cumplir con la normativa de protección de datos (RGPD).
+        <p className="text-slate-500 mt-2 text-base max-w-2xl mx-auto">
+          Censura de forma permanente datos personales sensibles (DNI, emails, teléfonos, cuentas bancarias) y elimina metadatos privados cumpliendo con RGPD/LOPD.
         </p>
+
+        {/* Feature Badges */}
+        <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            Detección automática de DNI/NIE, Emails e IBAN
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200 shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+            Aplanado irreversible a 300 DPI
+          </span>
+        </div>
       </div>
 
-      {!file && (
-        <div className="max-w-2xl mx-auto">
-          <Dropzone
-            onFilesSelected={handleFileSelected}
-            accept=".pdf,application/pdf"
-            maxFiles={1}
-            title="Arrastra tu archivo PDF aquí"
-            subtitle="o haz clic para seleccionar desde tu dispositivo"
-          />
-
-          {/* RGPD Guarantee Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-xs text-slate-800">Detección Inteligente</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">Encuentra DNI, emails, teléfonos y cuentas bancarias al instante.</p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-xs text-slate-800">Aplanado RGPD Seguro</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">Fusiona las censuras en la imagen para impedir copiar el texto oculto.</p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-xs text-slate-800">100% Privado en Cliente</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">Tu archivo se procesa en tu navegador. Cero subidas a servidores.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {file && (
+      {!file ? (
+        <Dropzone
+          onFilesSelected={handleFileSelected}
+          multiple={false}
+          title="Seleccionar documento PDF para anonimizar"
+          subtitle="o arrastra tu archivo aquí para detectar y censurar datos confidenciales"
+        />
+      ) : (
         <div className="space-y-6">
-          {/* Top Control Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold">
-                <FileText className="w-5 h-5" />
+          {/* File summary & actions banner */}
+          <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+                <FileCheck className="w-6 h-6" />
               </div>
-              <div>
-                <p className="text-sm font-bold text-slate-800 truncate max-w-[200px] sm:max-w-xs" title={file.name}>
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base truncate max-w-xs sm:max-w-md">
                   {file.name}
-                </p>
-                <p className="text-xs text-slate-400">
-                  {formatFileSize(file.size)} • {totalPages} {totalPages === 1 ? 'página' : 'páginas'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {totalPages} {totalPages === 1 ? 'página' : 'páginas'} • {formatFileSize(file.size)} •{' '}
+                  <span className="font-semibold text-emerald-700">{activeCount} censuras activas</span>
                 </p>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               <button
                 onClick={handleReset}
-                className="text-xs text-slate-400 hover:text-red-600 hover:underline ml-2 transition-colors cursor-pointer"
+                disabled={isProcessing || isScanning}
+                className="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
               >
                 Cambiar archivo
               </button>
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
               <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage <= 1}
-                className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                title="Página anterior"
+                onClick={handleApplyAnonymization}
+                disabled={isProcessing || isScanning || activeCount === 0}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:bg-slate-300 flex items-center gap-2"
               >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-xs font-semibold text-slate-700 min-w-[80px] text-center">
-                Pág. {currentPage} de {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage >= totalPages}
-                className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                title="Página siguiente"
-              >
-                <ChevronRight className="w-4 h-4" />
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Anonimizando...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Anonimizar ({activeCount}) y Descargar</span>
+                  </>
+                )}
               </button>
             </div>
-
-            {/* Zoom Controls */}
-            <div className="flex items-center gap-1 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-200">
-              <button
-                onClick={() => setZoom((z) => Math.max(0.6, z - 0.2))}
-                className="p-1 rounded hover:bg-slate-200 text-slate-600 cursor-pointer transition-colors"
-                title="Alejar"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <span className="text-xs font-medium text-slate-600 px-1 min-w-[42px] text-center">
-                {Math.round(zoom * 100)}%
-              </span>
-              <button
-                onClick={() => setZoom((z) => Math.min(2.0, z + 0.2))}
-                className="p-1 rounded hover:bg-slate-200 text-slate-600 cursor-pointer transition-colors"
-                title="Acercar"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Primary Action Button */}
-            <button
-              onClick={handleAnonymize}
-              disabled={isProcessing || isScanning}
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold text-sm rounded-xl shadow-md shadow-teal-600/20 transition-all cursor-pointer disabled:opacity-50"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Procesando...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Anonimizar PDF ({boxes.length} {boxes.length === 1 ? 'área' : 'áreas'})</span>
-                </>
-              )}
-            </button>
           </div>
 
-          {/* Main Layout: Left Sidebar + Right PDF Viewer */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Sidebar */}
-            <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-5">
-              {/* Tabs */}
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-                <button
-                  onClick={() => setActiveTab('detect')}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                    activeTab === 'detect' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Detección
-                </button>
-                <button
-                  onClick={() => setActiveTab('list')}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer relative ${
-                    activeTab === 'list' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Censuras ({boxes.length})
-                </button>
-                <button
-                  onClick={() => setActiveTab('options')}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                    activeTab === 'options' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Seguridad
-                </button>
-              </div>
-
-              {/* TAB 1: AUTOMATIC DETECTION */}
-              {activeTab === 'detect' && (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                      Buscar y marcar datos automáticamente
-                    </h3>
-                    <p className="text-xs text-slate-500 mb-3">
-                      Selecciona qué tipo de información sensible deseas encontrar en todo el documento:
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 cursor-pointer transition-colors text-xs font-medium text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={detectDni}
-                          onChange={(e) => setDetectDni(e.target.checked)}
-                          className="rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
-                        />
-                        <span>DNI / NIE / CIF</span>
-                      </label>
-
-                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 cursor-pointer transition-colors text-xs font-medium text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={detectEmail}
-                          onChange={(e) => setDetectEmail(e.target.checked)}
-                          className="rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
-                        />
-                        <span>Emails</span>
-                      </label>
-
-                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 cursor-pointer transition-colors text-xs font-medium text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={detectPhone}
-                          onChange={(e) => setDetectPhone(e.target.checked)}
-                          className="rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
-                        />
-                        <span>Teléfonos</span>
-                      </label>
-
-                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 cursor-pointer transition-colors text-xs font-medium text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={detectIban}
-                          onChange={(e) => setDetectIban(e.target.checked)}
-                          className="rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
-                        />
-                        <span>IBAN / Tarjetas</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Palabras o nombres personalizados
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: Juan Pérez, Acme Corp, Proyecto Alfa"
-                      value={customKeywords}
-                      onChange={(e) => setCustomKeywords(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent placeholder:text-slate-400"
-                    />
-                    <span className="block text-[11px] text-slate-400 mt-1">
-                      Separa varias palabras o frases con comas.
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={handleRunScanner}
-                    disabled={isScanning || (!detectDni && !detectEmail && !detectPhone && !detectIban && !customKeywords.trim())}
-                    className="w-full py-2.5 px-4 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-semibold text-xs rounded-xl shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isScanning ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Analizando documento...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Search className="w-4 h-4" />
-                        <span>Escanear y marcar datos sensibles</span>
-                      </>
-                    )}
-                  </button>
-
-                  <div className="p-3 bg-teal-50/60 rounded-xl border border-teal-100 text-teal-900 text-xs flex items-start gap-2.5">
-                    <Info className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    <p className="leading-relaxed">
-                      También puedes <strong>hacer clic y arrastrar</strong> con el ratón directamente sobre la vista previa del PDF a la derecha para censurar cualquier área manualmente (firmas, fotos, textos escaneados).
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: REDACTION BOXES LIST */}
-              {activeTab === 'list' && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      Áreas censuradas ({boxes.length})
-                    </h3>
-                    {boxes.length > 0 && (
-                      <button
-                        onClick={handleClearAllBoxes}
-                        className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline cursor-pointer"
-                      >
-                        Borrar todas
-                      </button>
-                    )}
-                  </div>
-
-                  {boxes.length === 0 ? (
-                    <div className="text-center py-8 px-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                      <EyeOff className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="text-xs font-semibold text-slate-600">No hay áreas de censura creadas</p>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Utiliza el escáner automático o arrastra el cursor sobre la página para añadir tachados.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
-                      {boxes.map((box, idx) => {
-                        const isCurrent = box.pageIndex === currentPage - 1;
-                        return (
-                          <div
-                            key={box.id}
-                            onClick={() => {
-                              setCurrentPage(box.pageIndex + 1);
-                              setSelectedBoxId(box.id);
-                            }}
-                            className={`p-2 rounded-xl border text-xs flex items-center justify-between gap-2 cursor-pointer transition-all ${
-                              selectedBoxId === box.id
-                                ? 'bg-teal-50 border-teal-300 text-teal-900'
-                                : isCurrent
-                                ? 'bg-white border-slate-200 hover:border-slate-300'
-                                : 'bg-slate-50/70 border-slate-100 hover:bg-slate-100 text-slate-500'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 truncate">
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">
-                                Pág. {box.pageIndex + 1}
-                              </span>
-                              <span className="truncate font-medium text-slate-800" title={box.text || box.label}>
-                                {box.text ? `"${box.text}"` : box.label || `Área #${idx + 1}`}
-                              </span>
-                            </div>
-
-                            <button
-                              onClick={(e) => handleDeleteBox(box.id, e)}
-                              className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors cursor-pointer"
-                              title="Eliminar esta censura"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {currentPageBoxes.length > 0 && (
-                    <button
-                      onClick={handleClearCurrentPageBoxes}
-                      className="w-full py-1.5 text-xs text-slate-500 hover:text-red-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
-                    >
-                      Limpiar censuras de la página {currentPage} ({currentPageBoxes.length})
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 3: SECURITY & STYLES */}
-              {activeTab === 'options' && (
-                <div className="space-y-4">
-                  {/* Style of redaction boxes */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Estilo visual de la censura
-                    </label>
-                    <div className="space-y-2">
-                      <label
-                        className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                          boxStyle === 'black'
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="boxStyle"
-                          checked={boxStyle === 'black'}
-                          onChange={() => setBoxStyle('black')}
-                          className="sr-only"
-                        />
-                        <div className="w-4 h-4 rounded bg-black border border-white/40 shrink-0" />
-                        <div className="text-xs">
-                          <span className="font-bold block">Bloque Negro Clásico</span>
-                          <span className={boxStyle === 'black' ? 'text-slate-300 text-[11px]' : 'text-slate-400 text-[11px]'}>
-                            Censura estándar y opaca.
-                          </span>
-                        </div>
-                      </label>
-
-                      <label
-                        className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                          boxStyle === 'white'
-                            ? 'bg-teal-50 border-teal-500 text-teal-900 shadow-sm'
-                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="boxStyle"
-                          checked={boxStyle === 'white'}
-                          onChange={() => setBoxStyle('white')}
-                          className="sr-only"
-                        />
-                        <div className="w-4 h-4 rounded bg-white border-2 border-slate-400 shrink-0" />
-                        <div className="text-xs">
-                          <span className="font-bold block">Bloque Blanco (Tipex)</span>
-                          <span className="text-slate-500 text-[11px]">
-                            Oculta el texto sin dejar marcas oscuras.
-                          </span>
-                        </div>
-                      </label>
-
-                      <label
-                        className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                          boxStyle === 'redacted-text'
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="boxStyle"
-                          checked={boxStyle === 'redacted-text'}
-                          onChange={() => setBoxStyle('redacted-text')}
-                          className="sr-only"
-                        />
-                        <div className="w-4 h-4 rounded bg-black text-[8px] font-bold text-white flex items-center justify-center border border-white/40 shrink-0">
-                          C
-                        </div>
-                        <div className="text-xs">
-                          <span className="font-bold block">Etiqueta [CENSURADO]</span>
-                          <span className={boxStyle === 'redacted-text' ? 'text-slate-300 text-[11px]' : 'text-slate-400 text-[11px]'}>
-                            Bloque negro con texto de confidencialidad.
-                          </span>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-
-                  <hr className="border-slate-100" />
-
-                  {/* Sanitization Options */}
-                  <div className="space-y-3">
-                    <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 cursor-pointer transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={removeMetadata}
-                        onChange={(e) => setRemoveMetadata(e.target.checked)}
-                        className="rounded text-teal-600 focus:ring-teal-500 cursor-pointer mt-0.5"
-                      />
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 block">
-                          Eliminar metadatos confidenciales
-                        </span>
-                        <span className="text-[11px] text-slate-500 block mt-0.5">
-                          Borra autor, software de creación, título, fechas y el paquete de metadatos XML XMP.
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-3 p-2.5 rounded-xl border border-teal-200 bg-teal-50/40 hover:bg-teal-50/70 cursor-pointer transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={flattenPages}
-                        onChange={(e) => setFlattenPages(e.target.checked)}
-                        className="rounded text-teal-600 focus:ring-teal-500 cursor-pointer mt-0.5"
-                      />
-                      <div>
-                        <span className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
-                          Aplanar páginas modificadas (Seguridad RGPD)
-                          <span className="bg-teal-600 text-white text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase">
-                            Recomendado
-                          </span>
-                        </span>
-                        <span className="text-[11px] text-teal-800/80 block mt-0.5">
-                          Convierte las páginas censuradas a imagen de alta definición. Esto garantiza que <strong>nadie pueda seleccionar ni extraer el texto oculto</strong> por debajo del bloque negro.
-                        </span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right PDF Viewer Area */}
-            <div className="lg:col-span-8 space-y-3">
-              {/* Interactive Hint */}
-              <div className="bg-slate-800 text-slate-200 px-4 py-2 rounded-xl text-xs flex items-center justify-between">
+          {/* Progress notification if busy */}
+          {(isScanning || isProcessing) && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
                 <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-                  <span>Modo interactivo: Arrastra el cursor sobre la página para dibujar censuras manuales.</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  {progressText}
                 </span>
-                <span className="font-semibold text-teal-300">
-                  {currentPageBoxes.length} {currentPageBoxes.length === 1 ? 'área en esta página' : 'áreas en esta página'}
-                </span>
+                <span className="text-emerald-700 font-extrabold">{progressPct}%</span>
+              </div>
+              <div className="w-full bg-emerald-200/50 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-emerald-600 h-full rounded-full transition-[width] duration-300 ease-out"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="flex items-center gap-2 p-4 bg-red-50 text-red-700 border border-red-200 rounded-2xl text-sm font-semibold">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Workspace Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left/Center: Interactive PDF Page Viewer (Col 8) */}
+            <div className="lg:col-span-8 bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+              {/* Page Controls Toolbar */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 rounded-lg">
+                    <MousePointer className="w-3.5 h-3.5 text-slate-500" />
+                    Arrastra el ratón sobre la página para censurar cualquier área
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1 || isProcessing}
+                    aria-label="Página anterior"
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-bold text-slate-700 px-1">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages || isProcessing}
+                    aria-label="Página siguiente"
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
-              {/* PDF Canvas Container */}
-              <div
-                ref={containerRef}
-                className="relative bg-slate-200/90 rounded-2xl p-4 sm:p-6 overflow-auto border border-slate-300/80 shadow-inner min-h-[550px] flex items-center justify-center select-none"
-              >
+              {/* Canvas Preview Container with Interactive Overlay */}
+              <div className="relative flex justify-center bg-slate-100 rounded-2xl p-4 overflow-auto min-h-[550px]">
                 <div
-                  className="relative shadow-2xl bg-white border border-slate-300 cursor-crosshair"
-                  onMouseDown={handlePointerDown}
-                  onMouseMove={handlePointerMove}
-                  onMouseUp={handlePointerUp}
-                  onTouchStart={handlePointerDown}
-                  onTouchMove={handlePointerMove}
-                  onTouchEnd={handlePointerUp}
+                  ref={overlayRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  className="relative shadow-xl rounded-lg overflow-hidden cursor-crosshair select-none inline-block max-w-full"
                 >
-                  {/* Real PDF Canvas */}
-                  <canvas ref={canvasRef} className="block pointer-events-none" />
+                  <canvas ref={canvasRef} className="block max-w-full h-auto" />
 
-                  {/* Redaction Boxes Overlay */}
-                  {currentPageBoxes.map((box) => {
-                    const isSelected = selectedBoxId === box.id;
-                    const styleType = box.style || boxStyle;
-
+                  {/* Render Existing Redactions for current page */}
+                  {currentPageRedactions.map((r) => {
+                    if (!r.enabled) return null;
                     return (
                       <div
-                        key={box.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedBoxId(box.id);
-                        }}
+                        key={r.id}
+                        onClick={() => handleToggleRedaction(r.id)}
+                        title={`${r.text} (${r.category}) - Clic para desactivar`}
                         style={{
-                          left: `${box.x}%`,
-                          top: `${box.y}%`,
-                          width: `${box.width}%`,
-                          height: `${box.height}%`,
+                          left: `${r.x}%`,
+                          top: `${r.y}%`,
+                          width: `${r.width}%`,
+                          height: `${r.height}%`,
                         }}
-                        className={`absolute group transition-shadow ${
-                          styleType === 'white'
-                            ? 'bg-white border border-slate-400/80'
-                            : styleType === 'redacted-text'
-                            ? 'bg-black text-white font-bold flex items-center justify-center overflow-hidden border border-black'
-                            : 'bg-black border border-black'
-                        } ${isSelected ? 'ring-2 ring-teal-400 shadow-lg' : 'hover:ring-1 hover:ring-teal-300'}`}
+                        className={`absolute group transition-transform ${
+                          redactionStyle === 'white'
+                            ? 'bg-white border border-slate-300'
+                            : redactionStyle === 'text'
+                            ? 'bg-slate-900 text-white flex items-center justify-center text-[10px] font-extrabold tracking-widest'
+                            : 'bg-black'
+                        }`}
                       >
-                        {styleType === 'redacted-text' && (
-                          <span className="text-[9px] tracking-widest uppercase select-none px-1 text-center font-mono">
-                            CENSURADO
-                          </span>
-                        )}
+                        {redactionStyle === 'text' && <span>[CENSURADO]</span>}
 
-                        {/* Delete Button on Hover / Selection */}
+                        {/* Tooltip & Delete button on hover */}
+                        <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-[10px] font-semibold px-2 py-1 rounded shadow-lg whitespace-nowrap z-30 pointer-events-none transition-opacity">
+                          {r.text}
+                        </div>
+
                         <button
-                          onClick={(e) => handleDeleteBox(box.id, e)}
-                          className="box-interactive-action absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer"
-                          title="Eliminar censura"
+                          type="button"
+                          onClick={(e) => handleDeleteRedaction(r.id, e)}
+                          title="Eliminar esta censura"
+                          className="opacity-0 group-hover:opacity-100 absolute -top-2 -right-2 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center z-40 transition-opacity shadow-md cursor-pointer"
                         >
-                          <X className="w-3 h-3" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     );
                   })}
 
-                  {/* Live Drawing Preview Box */}
-                  {liveRect && (
+                  {/* Live Dragging Rectangle */}
+                  {dragBox && dragBox.width > 0 && dragBox.height > 0 && (
                     <div
                       style={{
-                        left: `${liveRect.x}%`,
-                        top: `${liveRect.y}%`,
-                        width: `${liveRect.width}%`,
-                        height: `${liveRect.height}%`,
+                        left: `${dragBox.x}%`,
+                        top: `${dragBox.y}%`,
+                        width: `${dragBox.width}%`,
+                        height: `${dragBox.height}%`,
                       }}
-                      className="absolute border-2 border-teal-500 bg-teal-500/30 pointer-events-none z-10"
+                      className="absolute border-2 border-red-500 bg-red-500/25 pointer-events-none z-20"
                     />
                   )}
                 </div>
               </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+                <span>
+                  {currentPageRedactions.filter((r) => r.enabled).length} censuras en esta página
+                </span>
+                <span className="flex items-center gap-1 text-slate-400">
+                  <Info className="w-3.5 h-3.5" />
+                  Haz clic sobre cualquier caja para activarla o desactivarla
+                </span>
+              </div>
+            </div>
+
+            {/* Right Side: Detection & Custom Redaction Settings (Col 4) */}
+            <div className="lg:col-span-4 space-y-5">
+              {/* Category Toggles Box */}
+              <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                    <h4 className="font-bold text-slate-900 text-sm">Datos Detectados</h4>
+                  </div>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    {activeCount} activos
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {/* DNI */}
+                  <div
+                    onClick={() => handleToggleCategory('dni')}
+                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                      countCategory('dni') === 0
+                        ? 'border-slate-100 bg-slate-50 opacity-60'
+                        : countCategoryEnabled('dni') > 0
+                        ? 'border-emerald-300 bg-emerald-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border text-white ${
+                          countCategoryEnabled('dni') > 0
+                            ? 'bg-emerald-600 border-emerald-600'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {countCategoryEnabled('dni') > 0 && <Check className="w-3 h-3" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">DNI / NIE / CIF</p>
+                        <p className="text-[11px] text-slate-500">Documentos de identidad</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                      {countCategory('dni')}
+                    </span>
+                  </div>
+
+                  {/* Emails */}
+                  <div
+                    onClick={() => handleToggleCategory('email')}
+                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                      countCategory('email') === 0
+                        ? 'border-slate-100 bg-slate-50 opacity-60'
+                        : countCategoryEnabled('email') > 0
+                        ? 'border-emerald-300 bg-emerald-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border text-white ${
+                          countCategoryEnabled('email') > 0
+                            ? 'bg-emerald-600 border-emerald-600'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {countCategoryEnabled('email') > 0 && <Check className="w-3 h-3" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">Correos Electrónicos</p>
+                        <p className="text-[11px] text-slate-500">Direcciones de email</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                      {countCategory('email')}
+                    </span>
+                  </div>
+
+                  {/* Phones */}
+                  <div
+                    onClick={() => handleToggleCategory('phone')}
+                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                      countCategory('phone') === 0
+                        ? 'border-slate-100 bg-slate-50 opacity-60'
+                        : countCategoryEnabled('phone') > 0
+                        ? 'border-emerald-300 bg-emerald-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border text-white ${
+                          countCategoryEnabled('phone') > 0
+                            ? 'bg-emerald-600 border-emerald-600'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {countCategoryEnabled('phone') > 0 && <Check className="w-3 h-3" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">Teléfonos</p>
+                        <p className="text-[11px] text-slate-500">Móviles y fijos</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                      {countCategory('phone')}
+                    </span>
+                  </div>
+
+                  {/* IBAN */}
+                  <div
+                    onClick={() => handleToggleCategory('iban')}
+                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                      countCategory('iban') === 0
+                        ? 'border-slate-100 bg-slate-50 opacity-60'
+                        : countCategoryEnabled('iban') > 0
+                        ? 'border-emerald-300 bg-emerald-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border text-white ${
+                          countCategoryEnabled('iban') > 0
+                            ? 'bg-emerald-600 border-emerald-600'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {countCategoryEnabled('iban') > 0 && <Check className="w-3 h-3" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">Cuentas IBAN / Tarjetas</p>
+                        <p className="text-[11px] text-slate-500">Datos bancarios</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                      {countCategory('iban')}
+                    </span>
+                  </div>
+
+                  {/* Dates */}
+                  <div
+                    onClick={() => handleToggleCategory('date')}
+                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                      countCategory('date') === 0
+                        ? 'border-slate-100 bg-slate-50 opacity-60'
+                        : countCategoryEnabled('date') > 0
+                        ? 'border-emerald-300 bg-emerald-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border text-white ${
+                          countCategoryEnabled('date') > 0
+                            ? 'bg-emerald-600 border-emerald-600'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {countCategoryEnabled('date') > 0 && <Check className="w-3 h-3" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">Fechas</p>
+                        <p className="text-[11px] text-slate-500">Fechas de nacimiento y firma</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                      {countCategory('date')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Custom Search Words Box */}
+              <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-emerald-600" />
+                  Censurar palabras o nombres clave
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Escribe un nombre, apellido o empresa y se censurará en todas las páginas.
+                </p>
+
+                <form onSubmit={handleAddCustomKeyword} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newKeywordInput}
+                    onChange={(e) => setNewKeywordInput(e.target.value)}
+                    placeholder="Ej: García, Empresa S.L...."
+                    className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newKeywordInput.trim() || isScanning}
+                    className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold disabled:opacity-50 cursor-pointer"
+                  >
+                    Añadir
+                  </button>
+                </form>
+
+                {customKeywords.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {customKeywords.map((kw) => (
+                      <span
+                        key={kw}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold"
+                      >
+                        <span>{kw}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomKeyword(kw)}
+                          className="hover:text-red-600 cursor-pointer text-slate-400"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Redaction Style & Privacy Settings */}
+              <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-emerald-600" />
+                  Estilo de Censura y Seguridad
+                </h4>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
+                    Aspecto de la censura
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setRedactionStyle('black')}
+                      className={`p-2.5 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                        redactionStyle === 'black'
+                          ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-full h-3 bg-black rounded mb-1.5 mx-auto" />
+                      Negro
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRedactionStyle('text')}
+                      className={`p-2.5 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                        redactionStyle === 'text'
+                          ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-full h-3 bg-slate-900 text-[8px] text-white flex items-center justify-center rounded mb-1.5 mx-auto font-mono">
+                        CENSURA
+                      </div>
+                      Texto
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRedactionStyle('white')}
+                      className={`p-2.5 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                        redactionStyle === 'white'
+                          ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-full h-3 bg-white border border-slate-300 rounded mb-1.5 mx-auto" />
+                      Blanco
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-1 border-t border-slate-100">
+                  {/* Flatten PDF switch */}
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={flattenPdf}
+                      onChange={(e) => setFlattenPdf(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">
+                        Aplanar PDF (Máxima Seguridad RGPD)
+                      </p>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Destruye irreversiblemente los píxeles bajo las barras. Nadie podrá seleccionar ni copiar el texto original desde el PDF.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Remove Metadata switch */}
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={removeMetadata}
+                      onChange={(e) => setRemoveMetadata(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">
+                        Eliminar todos los Metadatos
+                      </p>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Borra autor, empresa, programas y fechas de creación ocultas en el archivo.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Bottom Action Button */}
+              <button
+                onClick={handleApplyAnonymization}
+                disabled={isProcessing || isScanning || activeCount === 0}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-base rounded-2xl shadow-xl shadow-emerald-600/25 transition-all cursor-pointer disabled:bg-slate-300 flex items-center justify-center gap-2"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Aplicando anonimización...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-5 h-5" />
+                    <span>Anonimizar ({activeCount}) y Descargar</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Progress / Loading Modal */}
-      {(isProcessing || isScanning) && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-100 text-center animate-fade-in">
-            <div className="w-16 h-16 rounded-2xl bg-teal-100 text-teal-600 mx-auto flex items-center justify-center mb-5 shadow-inner">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
-
-            <h3 className="text-xl font-bold text-slate-900">
-              {isScanning ? 'Escaneando Documento' : 'Anonimizando Documento'}
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1 mb-6">
-              {isScanning ? scanMessage : processMessage}
-            </p>
-
-            {/* Progress Bar */}
-            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-2">
-              <div
-                className="bg-teal-600 h-full rounded-full transition-all duration-300"
-                style={{ width: `${isScanning ? scanProgress : processProgress}%` }}
-              />
-            </div>
-            <span className="text-xs font-semibold text-teal-700">
-              {isScanning ? scanProgress : processProgress}% completado
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Error Message */}
-      {errorMsg && (
-        <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <p className="flex-1">{errorMsg}</p>
-          <button
-            onClick={() => setErrorMsg(null)}
-            className="p-1 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
       )}
     </div>

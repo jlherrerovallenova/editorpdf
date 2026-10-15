@@ -53,11 +53,24 @@ Una aplicación web moderna, rápida y **100% privada** inspirada en la interfaz
    - Protege tu PDF con una contraseña de cifrado estándar RC4 de 128 bits.
    - Compatible con cualquier visor de PDF estándar (Adobe Reader, Chrome, Edge).
 
+10. **OCR Reconocer Texto (Tesseract OCR + Exportación a Word)**
+   - Extrae texto digital editable de PDFs escaneados y fotos de documentos.
+   - Motor óptico basado en [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) a 300 DPI con redes neuronales LSTM y preprocesado de contraste.
+   - Modo híbrido inteligente: extrae texto nativo vectorial con 100% de precisión o aplica OCR a alta resolución si el documento está escaneado.
+   - Exporta directamente a documento editable de **Microsoft Word (.docx)**, PDF o TXT.
+
+11. **Anonimizar PDF (Censura y Sanitización RGPD)**
+   - Detecta y censura automáticamente información personal confidencial: DNI/NIE/CIF, emails, teléfonos, cuentas IBAN/tarjetas y fechas.
+   - Búsqueda y censura de nombres o palabras clave personalizadas en todo el documento.
+   - Censura manual interactiva: arrastra el ratón para ocultar firmas, fotos de carnet, sellos o logotipos.
+   - Aplanado permanente a 300 DPI para destruir físicamente el texto bajo las barras negras e impedir que sea recuperado.
+   - Eliminación total de metadatos privados del documento (autor, creador, fechas).
+
 ---
 
 ## 🔒 Privacidad y Rendimiento
 
-- **Cero subidas a la nube**: A diferencia de servicios tradicionales que requieren subir tus documentos a servidores remotos, **PDFMaster** procesa todo localmente con `pdf-lib` y `pdfjs-dist`.
+- **Cero subidas a la nube**: A diferencia de servicios tradicionales que requieren subir tus documentos a servidores remotos, **PDFMaster** procesa todo localmente con `pdf-lib`, `pdfjs-dist` y el motor `Tesseract OCR` en WebAssembly.
 - **Sin límites**: Procesa documentos del tamaño y páginas que necesites sin pagar suscripciones.
 
 ---
@@ -67,9 +80,11 @@ Una aplicación web moderna, rápida y **100% privada** inspirada en la interfaz
 - **React 19** + **TypeScript**
 - **Vite**
 - **Tailwind CSS**
+- **[Tesseract OCR](https://github.com/tesseract-ocr/tesseract)** (`tesseract.js` / WebAssembly LSTM)
 - **pdf-lib**
 - **pdfjs-dist**
 - **@pdfsmaller/pdf-encrypt-lite**
+- **docx**
 - **JSZip**
 - **Lucide React** (Iconos modernos)
 - **Canvas-Confetti**
