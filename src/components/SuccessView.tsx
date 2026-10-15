@@ -97,7 +97,7 @@ export const SuccessView: React.FC<SuccessViewProps> = ({
       <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
         <button
           onClick={onDownload}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-lg rounded-2xl shadow-xl shadow-brand-600/30 hover:shadow-brand-600/40 transition-[background-color,box-shadow,transform] transform hover:-translate-y-0.5 cursor-pointer"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:from-indigo-700 active:to-violet-700 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl shadow-indigo-600/25 hover:shadow-indigo-600/35 transition-all transform hover:-translate-y-0.5 cursor-pointer"
         >
           <Download className="w-5 h-5" />
           {downloadLabel}
@@ -115,7 +115,7 @@ export const SuccessView: React.FC<SuccessViewProps> = ({
       <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center">
         <button
           onClick={onHome}
-          className="text-xs font-semibold text-slate-400 hover:text-brand-600 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+          className="text-xs font-semibold text-slate-400 hover:text-indigo-600 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
         >
           <Home className="w-3.5 h-3.5" />
           Ver todas las herramientas PDF

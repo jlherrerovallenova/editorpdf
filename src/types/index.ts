@@ -13,7 +13,28 @@ export type ToolId =
   | 'ocr'
   | 'page-number'
   | 'unlock'
-  | 'compare';
+  | 'compare'
+  | 'anonymize';
+
+export interface RedactionBox {
+  id: string;
+  pageIndex: number; // 0-based
+  x: number; // percentage (0 to 100)
+  y: number; // percentage (0 to 100)
+  width: number; // percentage (0 to 100)
+  height: number; // percentage (0 to 100)
+  text?: string;
+  type?: 'dni' | 'email' | 'phone' | 'iban' | 'custom' | 'manual';
+  label?: string;
+  style?: 'black' | 'white' | 'redacted-text';
+}
+
+export interface AnonymizeOptions {
+  boxes: RedactionBox[];
+  removeMetadata: boolean;
+  flattenPages: boolean;
+  defaultBoxColor?: 'black' | 'white' | 'redacted-text';
+}
 
 export type ToolCategory = 'organize' | 'optimize' | 'convert' | 'edit' | 'security';
 

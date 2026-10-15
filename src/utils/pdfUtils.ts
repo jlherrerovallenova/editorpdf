@@ -1,10 +1,10 @@
-import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, degrees, StandardFonts, PDFName } from 'pdf-lib';
 import { pdfjsLib } from './pdfWorker';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import JSZip from 'jszip';
 import { recognize } from 'tesseract.js';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, PageBreak } from 'docx';
-import type { Annotation, PageInfo } from '../types';
+import type { Annotation, PageInfo, RedactionBox, AnonymizeOptions } from '../types';
 
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -334,6 +334,62 @@ export async function imagesToPdf(
 }
 
 // 5. PDF TO IMAGES
+export async function getPdfPageCount(data: ArrayBuffer | File): Promise<number> {
+  try {
+    const buffer = data instanceof File ? await data.arrayBuffer() : data;
+    const doc = await getPdfJsDocument(buffer);
+    return doc.numPages;
+  } catch {
+    return 1;
+  }
+}
+
+export async function renderPdfPageToBlob(
+  page: any,
+  scale: number,
+  format: 'image/jpeg' | 'image/png',
+  quality: number
+): Promise<Blob> {
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('No se pudo obtener el contexto 2D del canvas');
+  }
+
+  // Draw white background
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  await page.render({
+    canvasContext: context,
+    viewport: viewport,
+  }).promise;
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) => {
+        if (b) resolve(b);
+        else reject(new Error('Error al generar blob de la imagen'));
+      },
+      format,
+      quality
+    );
+  });
+
+  // Explicitly free canvas memory
+  canvas.width = 0;
+  canvas.height = 0;
+  if (typeof (page as any).cleanup === 'function') {
+    (page as any).cleanup();
+  }
+
+  return blob;
+}
+
 export async function pdfToImages(
   pdfData: ArrayBuffer,
   format: 'image/jpeg' | 'image/png' = 'image/jpeg',
@@ -371,6 +427,13 @@ export async function pdfToImages(
       canvas.toBlob((b) => resolve(b || new Blob()), format, quality);
     });
 
+    // Free canvas
+    canvas.width = 0;
+    canvas.height = 0;
+    if (typeof (page as any).cleanup === 'function') {
+      (page as any).cleanup();
+    }
+
     results.push({
       name: `${baseName}_${i}.${ext}`,
       blob,
@@ -383,6 +446,228 @@ export async function pdfToImages(
   }
 
   return results;
+}
+
+export interface BatchPdfConvertItem {
+  id: string;
+  name: string;
+  file: File;
+}
+
+export interface BatchConvertProgressInfo {
+  fileIndex: number;
+  totalFiles: number;
+  fileName: string;
+  pageIndex: number;
+  totalPagesInFile: number;
+  totalProcessedPages: number;
+  totalEstimatedPages: number;
+  percentage: number;
+  statusText: string;
+}
+
+export interface BatchConvertOptions {
+  format?: 'image/jpeg' | 'image/png';
+  scale?: number;
+  quality?: number;
+  pageScope?: 'all' | 'first';
+  folderStructure?: 'folders' | 'flat';
+  onProgress?: (info: BatchConvertProgressInfo) => void;
+  signal?: AbortSignal;
+}
+
+export interface ConvertedPageItem {
+  pageNumber: number;
+  name: string;
+  blob: Blob;
+  previewUrl: string;
+}
+
+export interface ConvertedPdfResult {
+  id: string;
+  fileName: string;
+  baseName: string;
+  pageCount: number;
+  images: ConvertedPageItem[];
+  error?: string;
+}
+
+export interface BatchConvertSummary {
+  results: ConvertedPdfResult[];
+  masterZipBlob: Blob;
+  totalImages: number;
+  totalPdfCount: number;
+  failedCount: number;
+}
+
+export async function batchConvertPdfToImages(
+  items: BatchPdfConvertItem[],
+  options: BatchConvertOptions = {}
+): Promise<BatchConvertSummary> {
+  const format = options.format || 'image/jpeg';
+  const scale = options.scale || 1.5;
+  const quality = options.quality ?? 0.92;
+  const pageScope = options.pageScope || 'all';
+  const folderStructure = options.folderStructure || 'folders';
+  const ext = format === 'image/jpeg' ? 'jpg' : 'png';
+
+  const masterZip = new JSZip();
+  const results: ConvertedPdfResult[] = [];
+  let totalImages = 0;
+  let failedCount = 0;
+
+  options.onProgress?.({
+    fileIndex: 0,
+    totalFiles: items.length,
+    fileName: '',
+    pageIndex: 0,
+    totalPagesInFile: 0,
+    totalProcessedPages: 0,
+    totalEstimatedPages: items.length,
+    percentage: 2,
+    statusText: 'Preparando cola de archivos PDF...',
+  });
+
+  // Calculate pages or estimate
+  let totalEstimatedPages = 0;
+  const preppedFiles: { item: BatchPdfConvertItem; buffer?: ArrayBuffer; numPages: number }[] = [];
+
+  for (let i = 0; i < items.length; i++) {
+    if (options.signal?.aborted) {
+      throw new DOMException('Conversión cancelada por el usuario', 'AbortError');
+    }
+    const it = items[i];
+    try {
+      const buf = await it.file.arrayBuffer();
+      const pDoc = await getPdfJsDocument(buf);
+      const docPages = pDoc.numPages;
+      const willExtract = pageScope === 'first' ? 1 : docPages;
+      totalEstimatedPages += willExtract;
+      preppedFiles.push({ item: it, buffer: buf, numPages: docPages });
+    } catch {
+      preppedFiles.push({ item: it, numPages: 1 });
+      totalEstimatedPages += 1;
+    }
+  }
+
+  let totalProcessedPages = 0;
+
+  for (let fileIdx = 0; fileIdx < preppedFiles.length; fileIdx++) {
+    if (options.signal?.aborted) {
+      throw new DOMException('Conversión cancelada por el usuario', 'AbortError');
+    }
+
+    const { item, buffer } = preppedFiles[fileIdx];
+    const rawBaseName = item.name.replace(/\.[^/.]+$/, '').trim() || `documento_${fileIdx + 1}`;
+    const safeBaseName = rawBaseName.replace(/[\\/:*?"<>|]/g, '_');
+
+    try {
+      const pdfBuffer = buffer || (await item.file.arrayBuffer());
+      const pdfDoc = await getPdfJsDocument(pdfBuffer);
+      const totalPagesInDoc = pdfDoc.numPages;
+      const pagesToExtract = pageScope === 'first' ? [1] : Array.from({ length: totalPagesInDoc }, (_, idx) => idx + 1);
+
+      const fileImages: ConvertedPageItem[] = [];
+
+      for (let pIdx = 0; pIdx < pagesToExtract.length; pIdx++) {
+        if (options.signal?.aborted) {
+          throw new DOMException('Conversión cancelada por el usuario', 'AbortError');
+        }
+
+        const pageNum = pagesToExtract[pIdx];
+
+        options.onProgress?.({
+          fileIndex: fileIdx + 1,
+          totalFiles: preppedFiles.length,
+          fileName: item.name,
+          pageIndex: pIdx + 1,
+          totalPagesInFile: pagesToExtract.length,
+          totalProcessedPages,
+          totalEstimatedPages,
+          percentage: Math.min(92, Math.round((totalProcessedPages / Math.max(1, totalEstimatedPages)) * 90) + 4),
+          statusText: `Convirtiendo "${item.name}": página ${pageNum} de ${totalPagesInDoc}...`,
+        });
+
+        const page = await pdfDoc.getPage(pageNum);
+        const blob = await renderPdfPageToBlob(page, scale, format, quality);
+        const previewUrl = URL.createObjectURL(blob);
+        const imageName = `${safeBaseName}_pagina_${pageNum}.${ext}`;
+
+        fileImages.push({
+          pageNumber: pageNum,
+          name: imageName,
+          blob,
+          previewUrl,
+        });
+
+        // Add to master zip
+        if (folderStructure === 'folders' && preppedFiles.length > 1) {
+          masterZip.folder(safeBaseName)?.file(imageName, blob);
+        } else {
+          masterZip.file(imageName, blob);
+        }
+
+        totalProcessedPages++;
+        totalImages++;
+      }
+
+      results.push({
+        id: item.id,
+        fileName: item.name,
+        baseName: safeBaseName,
+        pageCount: totalPagesInDoc,
+        images: fileImages,
+      });
+    } catch (err: any) {
+      console.error(`Error procesando archivo ${item.name}:`, err);
+      failedCount++;
+      results.push({
+        id: item.id,
+        fileName: item.name,
+        baseName: safeBaseName,
+        pageCount: 0,
+        images: [],
+        error: err?.message || 'Error al procesar el archivo PDF (puede estar protegido o corrupto).',
+      });
+    }
+  }
+
+  options.onProgress?.({
+    fileIndex: preppedFiles.length,
+    totalFiles: preppedFiles.length,
+    fileName: '',
+    pageIndex: 0,
+    totalPagesInFile: 0,
+    totalProcessedPages,
+    totalEstimatedPages,
+    percentage: 94,
+    statusText: 'Generando archivo comprimido ZIP...',
+  });
+
+  const masterZipBlob = await masterZip.generateAsync(
+    { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 4 } },
+    (metadata) => {
+      options.onProgress?.({
+        fileIndex: preppedFiles.length,
+        totalFiles: preppedFiles.length,
+        fileName: '',
+        pageIndex: 0,
+        totalPagesInFile: 0,
+        totalProcessedPages,
+        totalEstimatedPages,
+        percentage: Math.min(99, 93 + Math.round(metadata.percent * 0.06)),
+        statusText: `Comprimiendo archivo ZIP... ${Math.round(metadata.percent)}%`,
+      });
+    }
+  );
+
+  return {
+    results,
+    masterZipBlob,
+    totalImages,
+    totalPdfCount: items.length,
+    failedCount,
+  };
 }
 
 // Helper to create ZIP file from multiple files
@@ -1376,5 +1661,422 @@ export async function cropPdf(
     data,
     pageCount: total,
     croppedPagesCount,
+  };
+}
+
+// 16. ANONYMIZE & REDACT PDF (RGPD COMPLIANT)
+export interface DetectSensitiveConfig {
+  dni: boolean;
+  email: boolean;
+  phone: boolean;
+  iban: boolean;
+  customKeywords: string[];
+}
+
+export async function detectSensitiveDataInPdf(
+  pdfData: ArrayBuffer | Uint8Array,
+  config: DetectSensitiveConfig,
+  onProgress?: (message: string, percent: number) => void
+): Promise<RedactionBox[]> {
+  const pdfJsDoc = await getPdfJsDocument(pdfData);
+  const total = pdfJsDoc.numPages;
+  const detectedBoxes: RedactionBox[] = [];
+
+  const patterns: { type: 'dni' | 'email' | 'phone' | 'iban'; regex: RegExp; label: string }[] = [];
+
+  if (config.dni) {
+    // DNI (8 digits + letter), NIE (X/Y/Z + 7 digits + letter), CIF (Letter + 7 digits + letter/digit)
+    patterns.push({
+      type: 'dni',
+      regex: /\b(?:[0-9]{8}[ -]?[A-Za-z]|[XYZxyz][ -]?[0-9]{7}[ -]?[A-Za-z]|[ABCDEFGHJNPQRSUVWabcdefghjnpqrsuvw][ -]?[0-9]{7}[ -]?[0-9A-Ja-z])\b/g,
+      label: 'DNI/NIE/CIF',
+    });
+  }
+
+  if (config.email) {
+    patterns.push({
+      type: 'email',
+      regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+      label: 'Email',
+    });
+  }
+
+  if (config.phone) {
+    // Spanish / international mobile and landline phones
+    patterns.push({
+      type: 'phone',
+      regex: /(?:\+?34[ -]?)?(?:[6789]\d{2}[ -]?\d{3}[ -]?\d{3}|[6789]\d{1}[ -]?\d{3}[ -]?\d{2}[ -]?\d{2})\b/g,
+      label: 'Teléfono',
+    });
+  }
+
+  if (config.iban) {
+    // IBAN or standard 16 digit card numbers
+    patterns.push({
+      type: 'iban',
+      regex: /\b(?:[A-Za-z]{2}\d{2}[ -]?(?:\d{4}[ -]?){4}\d{2,4}|(?:\d{4}[ -]?){3}\d{4})\b/g,
+      label: 'IBAN/Tarjeta',
+    });
+  }
+
+  const customWords = config.customKeywords
+    .map((k) => k.trim())
+    .filter((k) => k.length >= 2);
+
+  for (let pageNum = 1; pageNum <= total; pageNum++) {
+    if (onProgress) {
+      onProgress(`Analizando página ${pageNum} de ${total}...`, Math.round((pageNum / total) * 100));
+    }
+
+    const page = await pdfJsDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1.0 });
+    const textContent = await page.getTextContent();
+    const items = textContent.items as Array<{
+      str: string;
+      transform: number[];
+      width: number;
+      height: number;
+    }>;
+
+    const pageIdx = pageNum - 1;
+
+    for (const item of items) {
+      if (!item.str || !item.str.trim()) continue;
+      const str = item.str;
+
+      // Check standard patterns
+      for (const { type, regex, label } of patterns) {
+        regex.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(str)) !== null) {
+          const matchedText = match[0];
+          const matchIndex = match.index;
+
+          const itemX = item.transform[4];
+          const itemY = item.transform[5];
+          const itemW = item.width;
+          const itemH = item.height || Math.abs(item.transform[0]) || Math.abs(item.transform[3]) || 12;
+
+          const [vx1, vy1] = viewport.convertToViewportPoint(itemX, itemY);
+          const [vx2, vy2] = viewport.convertToViewportPoint(itemX + itemW, itemY + itemH);
+
+          const minVx = Math.min(vx1, vx2);
+          const maxVx = Math.max(vx1, vx2);
+          const minVy = Math.min(vy1, vy2);
+          const maxVy = Math.max(vy1, vy2);
+
+          const totalW = maxVx - minVx;
+          const charRatioStart = matchIndex / str.length;
+          const charRatioEnd = (matchIndex + matchedText.length) / str.length;
+
+          const boxVx = minVx + charRatioStart * totalW;
+          const boxVw = Math.max(8, (charRatioEnd - charRatioStart) * totalW);
+          const boxVh = Math.max(10, maxVy - minVy);
+
+          const padX = 2;
+          const padY = 2;
+
+          const pctX = Math.max(0, ((boxVx - padX) / viewport.width) * 100);
+          const pctY = Math.max(0, ((minVy - padY) / viewport.height) * 100);
+          const pctW = Math.min(100 - pctX, ((boxVw + padX * 2) / viewport.width) * 100);
+          const pctH = Math.min(100 - pctY, ((boxVh + padY * 2) / viewport.height) * 100);
+
+          detectedBoxes.push({
+            id: 'det_' + Math.random().toString(36).substring(2, 9),
+            pageIndex: pageIdx,
+            x: Math.round(pctX * 10) / 10,
+            y: Math.round(pctY * 10) / 10,
+            width: Math.round(pctW * 10) / 10,
+            height: Math.round(pctH * 10) / 10,
+            text: matchedText,
+            type,
+            label: `${label}: ${matchedText}`,
+            style: 'black',
+          });
+        }
+      }
+
+      // Check custom keywords
+      for (const kw of customWords) {
+        const lowerStr = str.toLowerCase();
+        const lowerKw = kw.toLowerCase();
+        let startIndex = 0;
+        let foundIdx: number;
+        while ((foundIdx = lowerStr.indexOf(lowerKw, startIndex)) !== -1) {
+          startIndex = foundIdx + lowerKw.length;
+          const matchedText = str.substring(foundIdx, foundIdx + lowerKw.length);
+
+          const itemX = item.transform[4];
+          const itemY = item.transform[5];
+          const itemW = item.width;
+          const itemH = item.height || Math.abs(item.transform[0]) || Math.abs(item.transform[3]) || 12;
+
+          const [vx1, vy1] = viewport.convertToViewportPoint(itemX, itemY);
+          const [vx2, vy2] = viewport.convertToViewportPoint(itemX + itemW, itemY + itemH);
+
+          const minVx = Math.min(vx1, vx2);
+          const maxVx = Math.max(vx1, vx2);
+          const minVy = Math.min(vy1, vy2);
+          const maxVy = Math.max(vy1, vy2);
+
+          const totalW = maxVx - minVx;
+          const charRatioStart = foundIdx / str.length;
+          const charRatioEnd = (foundIdx + matchedText.length) / str.length;
+
+          const boxVx = minVx + charRatioStart * totalW;
+          const boxVw = Math.max(8, (charRatioEnd - charRatioStart) * totalW);
+          const boxVh = Math.max(10, maxVy - minVy);
+
+          const padX = 2;
+          const padY = 2;
+
+          const pctX = Math.max(0, ((boxVx - padX) / viewport.width) * 100);
+          const pctY = Math.max(0, ((minVy - padY) / viewport.height) * 100);
+          const pctW = Math.min(100 - pctX, ((boxVw + padX * 2) / viewport.width) * 100);
+          const pctH = Math.min(100 - pctY, ((boxVh + padY * 2) / viewport.height) * 100);
+
+          detectedBoxes.push({
+            id: 'det_' + Math.random().toString(36).substring(2, 9),
+            pageIndex: pageIdx,
+            x: Math.round(pctX * 10) / 10,
+            y: Math.round(pctY * 10) / 10,
+            width: Math.round(pctW * 10) / 10,
+            height: Math.round(pctH * 10) / 10,
+            text: matchedText,
+            type: 'custom',
+            label: `Palabra: ${matchedText}`,
+            style: 'black',
+          });
+        }
+      }
+    }
+  }
+
+  // Deduplicate overlapping boxes
+  const uniqueBoxes: RedactionBox[] = [];
+  for (const box of detectedBoxes) {
+    const isDup = uniqueBoxes.some(
+      (b) =>
+        b.pageIndex === box.pageIndex &&
+        Math.abs(b.x - box.x) < 2 &&
+        Math.abs(b.y - box.y) < 2 &&
+        Math.abs(b.width - box.width) < 3 &&
+        Math.abs(b.height - box.height) < 3
+    );
+    if (!isDup) {
+      uniqueBoxes.push(box);
+    }
+  }
+
+  return uniqueBoxes;
+}
+
+export async function anonymizePdf(
+  pdfData: ArrayBuffer | Uint8Array,
+  options: AnonymizeOptions,
+  onProgress?: (message: string, percent: number) => void
+): Promise<{
+  data: Uint8Array;
+  redactedCount: number;
+  pagesAffected: number;
+}> {
+  if (onProgress) onProgress('Preparando documento...', 5);
+  const [pdfJsDoc, pdfDoc] = await Promise.all([
+    getPdfJsDocument(pdfData),
+    PDFDocument.load(pdfData, { ignoreEncryption: true }),
+  ]);
+
+  const totalPages = pdfDoc.getPageCount();
+  const boxesByPage = new Map<number, RedactionBox[]>();
+
+  for (const box of options.boxes) {
+    if (box.pageIndex >= 0 && box.pageIndex < totalPages) {
+      const list = boxesByPage.get(box.pageIndex) || [];
+      list.push(box);
+      boxesByPage.set(box.pageIndex, list);
+    }
+  }
+
+  const pagesAffected = boxesByPage.size;
+  const redactedCount = options.boxes.length;
+
+  for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+    const pageNum = pageIdx + 1;
+    const pageBoxes = boxesByPage.get(pageIdx) || [];
+
+    if (onProgress) {
+      const pct = 10 + Math.round((pageIdx / totalPages) * 75);
+      onProgress(`Procesando página ${pageNum} de ${totalPages}...`, pct);
+    }
+
+    if (pageBoxes.length === 0) {
+      continue;
+    }
+
+    const pdfJsPage = await pdfJsDoc.getPage(pageNum);
+    const viewport = pdfJsPage.getViewport({ scale: 1.0 });
+
+    if (options.flattenPages) {
+      // High-resolution canvas rasterization for irreversible redaction (RGPD)
+      const renderScale = 2.0;
+      const renderVp = pdfJsPage.getViewport({ scale: renderScale });
+      const canvas = document.createElement('canvas');
+      canvas.width = renderVp.width;
+      canvas.height = renderVp.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo inicializar el contexto de dibujo canvas');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      await pdfJsPage.render({
+        canvasContext: ctx,
+        viewport: renderVp,
+      }).promise;
+
+      // Draw all redactions directly on the canvas
+      for (const box of pageBoxes) {
+        const boxX = (box.x / 100) * canvas.width;
+        const boxY = (box.y / 100) * canvas.height;
+        const boxW = (box.width / 100) * canvas.width;
+        const boxH = (box.height / 100) * canvas.height;
+
+        const style = box.style || options.defaultBoxColor || 'black';
+
+        if (style === 'white') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(boxX, boxY, boxW, boxH);
+        } else if (style === 'redacted-text') {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(boxX, boxY, boxW, boxH);
+
+          ctx.fillStyle = '#ffffff';
+          const fontSize = Math.max(9, Math.min(14, boxH * 0.65));
+          ctx.font = `bold ${fontSize}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('[CENSURADO]', boxX + boxW / 2, boxY + boxH / 2);
+        } else {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(boxX, boxY, boxW, boxH);
+        }
+      }
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const embeddedImg = await pdfDoc.embedJpg(dataUrl);
+
+      const originalPage = pdfDoc.getPage(pageIdx);
+      const { width: pWidth, height: pHeight } = originalPage.getSize();
+
+      const newPage = pdfDoc.insertPage(pageIdx, [pWidth, pHeight]);
+      newPage.drawImage(embeddedImg, {
+        x: 0,
+        y: 0,
+        width: pWidth,
+        height: pHeight,
+      });
+      pdfDoc.removePage(pageIdx + 1);
+    } else {
+      // Vector overlay mode: filled rectangles
+      const page = pdfDoc.getPage(pageIdx);
+      const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      for (const box of pageBoxes) {
+        const viewW = viewport.width;
+        const viewH = viewport.height;
+
+        const cropX = Math.max(0, (box.x / 100) * viewW);
+        const cropY = Math.max(0, (box.y / 100) * viewH);
+        const cropW = Math.min(viewW - cropX, (box.width / 100) * viewW);
+        const cropH = Math.min(viewH - cropY, (box.height / 100) * viewH);
+
+        const corners = [
+          viewport.convertToPdfPoint(cropX, cropY),
+          viewport.convertToPdfPoint(cropX + cropW, cropY),
+          viewport.convertToPdfPoint(cropX + cropW, cropY + cropH),
+          viewport.convertToPdfPoint(cropX, cropY + cropH),
+        ];
+
+        const minX = Math.min(...corners.map((c) => c[0]));
+        const maxX = Math.max(...corners.map((c) => c[0]));
+        const minY = Math.min(...corners.map((c) => c[1]));
+        const maxY = Math.max(...corners.map((c) => c[1]));
+
+        const targetW = Math.max(1, maxX - minX);
+        const targetH = Math.max(1, maxY - minY);
+
+        const style = box.style || options.defaultBoxColor || 'black';
+
+        if (style === 'white') {
+          page.drawRectangle({
+            x: minX,
+            y: minY,
+            width: targetW,
+            height: targetH,
+            color: rgb(1, 1, 1),
+          });
+        } else if (style === 'redacted-text') {
+          page.drawRectangle({
+            x: minX,
+            y: minY,
+            width: targetW,
+            height: targetH,
+            color: rgb(0, 0, 0),
+          });
+
+          const fontSize = Math.max(7, Math.min(12, targetH * 0.6));
+          const text = '[CENSURADO]';
+          const textWidth = font.widthOfTextAtSize(text, fontSize);
+          if (textWidth < targetW) {
+            page.drawText(text, {
+              x: minX + (targetW - textWidth) / 2,
+              y: minY + (targetH - fontSize) / 2,
+              size: fontSize,
+              font,
+              color: rgb(1, 1, 1),
+            });
+          }
+        } else {
+          page.drawRectangle({
+            x: minX,
+            y: minY,
+            width: targetW,
+            height: targetH,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+    }
+  }
+
+  // Remove metadata
+  if (options.removeMetadata) {
+    if (onProgress) onProgress('Eliminando metadatos del documento...', 90);
+    pdfDoc.setTitle('');
+    pdfDoc.setAuthor('');
+    pdfDoc.setSubject('');
+    pdfDoc.setKeywords([]);
+    pdfDoc.setProducer('EditorPDF');
+    pdfDoc.setCreator('EditorPDF');
+    pdfDoc.setCreationDate(new Date(0));
+    pdfDoc.setModificationDate(new Date(0));
+
+    try {
+      if (pdfDoc.catalog.has(PDFName.of('Metadata'))) {
+        pdfDoc.catalog.delete(PDFName.of('Metadata'));
+      }
+    } catch (e) {
+      console.warn('Advertencia al eliminar metadatos XMP:', e);
+    }
+  }
+
+  if (onProgress) onProgress('Guardando documento final...', 95);
+  const data = await pdfDoc.save();
+  if (onProgress) onProgress('¡Listo!', 100);
+
+  return {
+    data,
+    redactedCount,
+    pagesAffected,
   };
 }

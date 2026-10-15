@@ -17,6 +17,7 @@ import { CompareTool } from './tools/CompareTool';
 import { UnlockTool } from './tools/UnlockTool';
 import { PdfToWordTool } from './tools/PdfToWordTool';
 import { CropTool } from './tools/CropTool';
+import { AnonymizeTool } from './tools/AnonymizeTool';
 import { useEffect } from 'react';
 import type { ToolId } from './types';
 
@@ -43,7 +44,14 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 font-['Inter',sans-serif]">
+    <div className="min-h-screen flex flex-col bg-[#fafbfd] font-sans antialiased relative selection:bg-indigo-600 selection:text-white">
+      {/* Background ambient lighting */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-tr from-indigo-500/10 via-purple-500/10 to-sky-400/10 blur-[130px] rounded-full" />
+        <div className="absolute top-[40%] -left-40 w-[600px] h-[600px] bg-indigo-500/5 blur-[140px] rounded-full" />
+        <div className="absolute top-[60%] -right-40 w-[600px] h-[600px] bg-violet-500/5 blur-[140px] rounded-full" />
+      </div>
+
       {/* Top Navigation */}
       <Header currentTool={currentTool} onSelectTool={handleSelectTool} />
 
@@ -65,6 +73,7 @@ export function App() {
         {currentTool === 'unlock' && <UnlockTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'pdf-to-word' && <PdfToWordTool onHome={() => handleSelectTool(null)} />}
         {currentTool === 'crop' && <CropTool onHome={() => handleSelectTool(null)} />}
+        {currentTool === 'anonymize' && <AnonymizeTool onHome={() => handleSelectTool(null)} />}
       </main>
 
       {/* Footer */}

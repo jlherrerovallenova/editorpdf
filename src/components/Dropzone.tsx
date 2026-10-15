@@ -78,10 +78,10 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-[border-color,background-color,box-shadow,transform] duration-200 ${
+        className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-200 ${
           isDragging
-            ? 'border-brand-500 bg-brand-50/60 scale-[1.01] shadow-xl shadow-brand-500/10'
-            : 'border-slate-300 hover:border-brand-400 bg-white shadow-sm'
+            ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01] shadow-2xl shadow-indigo-500/10'
+            : 'border-slate-200/90 hover:border-indigo-400 bg-white/95 backdrop-blur-xl shadow-xs hover:shadow-lg hover:shadow-indigo-500/5'
         }`}
       >
         <input
@@ -94,7 +94,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         />
 
         <div className="flex flex-col items-center justify-center space-y-5">
-          <div className="w-20 h-20 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 shadow-inner group">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100/80 flex items-center justify-center text-indigo-600 shadow-inner group-hover:scale-105 transition-transform">
             <UploadCloud className="w-10 h-10 transition-transform group-hover:scale-110" />
           </div>
 
@@ -102,7 +102,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-8 py-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-lg rounded-2xl shadow-lg shadow-brand-600/30 hover:shadow-brand-600/40 transition-[background-color,box-shadow,transform] transform hover:-translate-y-0.5 cursor-pointer"
+              className="inline-flex items-center gap-2.5 px-8 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:from-indigo-700 active:to-violet-700 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl shadow-indigo-600/25 hover:shadow-indigo-600/35 transition-all transform hover:-translate-y-0.5 cursor-pointer"
             >
               <FileUp className="w-5 h-5" />
               {buttonLabel || title}
@@ -119,9 +119,9 @@ export const Dropzone: React.FC<DropzoneProps> = ({
           )}
 
           <div className="flex items-center gap-6 pt-2 text-xs text-slate-400">
-            <span className="flex items-center gap-1">🔒 Procesamiento local 100% privado</span>
+            <span className="flex items-center gap-1 font-medium">🔒 Procesamiento local 100% privado</span>
             <span>•</span>
-            <span className="flex items-center gap-1">⚡ Sin límites de tamaño de archivo</span>
+            <span className="flex items-center gap-1 font-medium">⚡ Sin límites de tamaño ni espera</span>
           </div>
         </div>
       </div>
